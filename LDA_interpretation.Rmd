@@ -20,7 +20,7 @@ Summary of models and especially their interpretation (graphically as well as co
 
 
 ```{r, echo=FALSE, warnings = FALSE, message = FALSE}
-setwd("/Users/Jann/Desktop/LMU_WISO/3. Semester/survival/LDA_interpretation/")
+setwd("/Users/Jann/Desktop/Repos/survival")
 
 library(ggplot2)
 theme_set(theme_bw())
@@ -275,8 +275,11 @@ summary(mod_ca)
   * Kolmogorov Smirnov for time variant effects: H0: constant effect can only clearly be rejected for metastases 
 \textcolor{red}{DISCUSS THIS}
 * Cox part:
-  * kkk
+  * sexf: the additive, time-varying effects $\beta(t) = (\beta_{age}(t), \beta_{charlson}(t), \beta_{complications}(t), \beta_{metastases}(t))^T$ from the Aalen model is getting multiplied by factor $exp(0.224) = 1.251071$ for a female compared with a similar man
+  * same for transfusion (exp(0.233) = 1.262381) and major_resection (exp(0.254) = 1.289172)
+  * \textcolor{red}{DISCUSS}
   
+### Cox-Aalen vs. PAM  
   
 Compare this with the PAM fitted on the data using the below formula. We explicitly model time varying effects of the 4 variables (metastases, marjo_complications, age, charlson) as in the Aalen model via ti(). 
 
@@ -296,10 +299,11 @@ bam(
 
 The figure below shows the effect of the __time constant variables__ which allow some interpretation:
 
-* NOTE: Constant contributions to time-varying can be interpreted as effects at t=0 \textcolor{red}{DISCUSS THIS}
+* NOTE: Constant contributions to time-varying can be interpreted as effects at t=0. Check the model equation and \textcolor{red}{DISCUSS}
 * sex: Compared to males, females have a 1.22 times increased risk of experiencing an event (c.p.)
 * transfusion: Compared to patients without transfusion, patients with transfustion have a 1.27 times increased risk of experiencing an event (c.p.)
 * major resection: A major resection increases the risk of event by a factor of 1.28, compared to patients without a major resection
+* \textcolor{red}{DISCUSS} If above interpretation holds, this would fit nicely the effect of the time-constant factors in the Cox-part of above Cox-Aalen model
 
 
 ```{r, echo =FALSE, cache=TRUE}
@@ -333,7 +337,7 @@ Model summary:
 summary(mod_pam)
 ```
 
-This is the effect estimated for the smooth terms. The total effect of x at time point t = $\beta_x * x + f_x(t)$ where $\beta_x * x$ are the constant effects from the previous graphic and $f_x(t)$ models the effect of the smooth time varying term. They look like that:
+This is the effect estimated for the smooth terms. The total effect of x at time point t is $\beta_x * x + f_x(t)$ where $\beta_x * x$ are the constant effects from the previous graphic and $f_x(t)$ models the effect of the smooth time varying term. Recap the PAM model equation $\lambda_i(t|x_i) = exp(f_0(t_j) + x^T\beta)$ and \textcolor{red}{DISCUSS}. They look like that:
 
 ```{r, echo = FALSE}
 ## Smooth effects
