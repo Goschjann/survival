@@ -1,0 +1,391 @@
+---
+title: "LDA Interpretation"
+author: "Jann Goschenhofer"
+date: "25. 1. 2018"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc-depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+Summary of models and especially their interpretation (graphically as well as content based) used in Survival Analysis. This document emerged throughout the exam preparation for a lecture on Survival Data Analysis at LMU in winter 2018. Most examples are based on that lecture taught by Prof. Kuechenhoff and Andreas Bender. 
+
+
+```{r, echo=FALSE, warnings = FALSE, message = FALSE}
+setwd("/Users/Jann/Desktop/LMU_WISO/3. Semester/survival/LDA_interpretation/")
+
+library(ggplot2)
+theme_set(theme_bw())
+library(tidyr)
+library(dplyr)
+library(mgcv)
+library(purrr)
+library(survival)
+library(timereg)
+# devtools::install_github("adibender/ldatools")
+library(ldatools)
+# devtools::install_github("adibender/pammtools")
+library(pammtools)
+
+```
+
+# Kaplan Meier
+
+# Nelson Aalen
+
+# Accelerated Failure Time Transformation models
+
+# Cox Regression model
+
+# Residual Analysis
+
+# Semi-parametric additive Cox model
+
+# Time discrete Survival models
+
+# Piecewise exponential models (PEM)
+
+### Model equation:
+
+$$
+\lambda_i(t|x_i) = \lambda_jexp(x^T\beta), \forall t \in ]a_{j-1}, a_j]
+$$
+
+with constant baseline hazards in each of the $J$ intervals.
+
+# Piecewise additive exponential models (PAM)
+
+New compared to PEM: smooth modeling of the piecewise constant baseline hazards e.g. via splines. Cool because:  
+
+* PEM constrained by use of intervals as high $J$ leads to parameter explosion  
+* Smoother curves due to penalization of splines on the overlaps of the intervals  
+* Problem PEM: no data in interval $]a_{l-1}, a_l]$ -> $\lambda_l = 0$, wiggely hazard rate curves  
+
+### Model equation:
+
+$$
+\lambda_i(t|x_i) = exp(f_0(t_j) + x^T\beta) \\
+$$
+$$
+\text{with spline for time dependent baseline hazard: }\\
+$$
+$$
+f_0(t_j) = log(\lambda_0(t_j)) = \sum_{k = 1}^K \gamma_k B_k(t_j) \\
+$$
+$$
+\text{and for time varying covariates: } \\
+$$
+$$
+\lambda_i(t|x_i) = exp(f_0(t_j) + \sum_{j = 1}^pf_k(x_i, k)) 
+$$
+
+# Piecewise additive exponential mixed models (PAMM)
+
+### Model equation: 
+$$
+\lambda_i(t|x_i) = exp(f_0(t_j) + x^T\beta) \\
+$$
+$$
+\text{with spline for time dependent baseline hazard: }\\
+$$
+$$
+f_0(t_j) = log(\lambda_0(t_j)) = \sum_{k = 1}^K \gamma_k B_k(t_j) \\
+$$
+$$
+\text{and for time varying covariates: } \\
+$$
+$$
+\lambda_i(t|x_i) = exp(f_0(t_j) + \sum_{j = 1}^pf_k(x_i, k)) 
+$$
+
+### Data
+
+looks like that:
+
+```{r, echo=FALSE, message = FALSE, cache=TRUE}
+
+patients <- readRDS("data/icupatients.Rds")
+
+#### transform data
+
+## ApacheII Score:
+# good: 0, bad = 100
+# constant, measured only at start of hospital stay
+# Effects of such one-time measured measurements often fade out over time 
+# because they are changing over time but this change is not accounted for
+
+## i) Transform data
+ped <- split_data(Surv(Survdays, PatientDied)~., data=patients, cut=1:30, 
+  id="CombinedID")
+# filter(patients, PatientDied == 1) %>% slice(2)
+# filter(ped, CombinedID == 1113)
+
+ped = ped %>% group_by(interval) %>%
+  summarize(n.event = sum(ped_status))
+# -> no events prior to interval (4,5] due to exclusion criteria. Start evaluation
+# at interval (4,5]
+
+# use zero argument to survival::survSplit
+ped <- split_data(Surv(Survdays, PatientDied)~., data=patients, cut=1:30,
+  id="CombinedID", zero=4)
+# filter(ped, CombinedID == 1113)
+
+# include CombinedicuID as random effect
+# 400 hospitals -> would be 400 coeffients as control variable
+# frailty model / random effects: only estimate gaussian distribution over
+# the hospitals -> only estimate scale parameter / variance
+# CHECK  s(CombinedicuID, bs="re"), where "re" means random effects
+
+
+# relative frequencies per interval
+# simply calculated, no model
+# rate generally small, no deaths at the beginning
+# ped = ped %>% 
+#   group_by(interval) %>%
+#   summarize(
+#     n.event = sum(ped_status),
+#     event.percent = round(mean(ped_status), 3)*100) # %>% print(n=26)
+
+# -> decreasing relative frequencies over time
+
+print(head(ped))
+
+```
+
+Fit a PAMM with a smooth spline term for time (tend) and the other continous variables using this formula:
+
+```{r, echo = TRUE, cache = TRUE}
+pamm_icu <- bam(ped_status ~ s(tend) + Year + AdmCatID + DiagID2 + s(Age) + s(BMI) +
+      s(ApacheIIScore) + s(CombinedicuID, bs="re"), offset=offset, data = ped,
+    family=poisson(), discrete = TRUE)
+```
+
+We include the variable CombinedicuID as a random effect aka as a __frailty term__. Therefore wie use ```bs = "re"```. We control for the random effects of the ICU units without having to model a dummy for each of the ICU's. The frailty model just estimates a Gaussian over the different ICU's for which we only have to estimate the variance: 1 parameter vs. 400.
+
+We model the PAM as a Poisson model with log link on the death-indicator ```ped_status```
+
+This is the model summary:
+```{r, echo = FALSE}
+summary(pamm_icu)
+```
+
+### What can we say?
+
+* smooth terms for continuos variables:  
+  * if the edf (estimated degress of freedom) = 1, our spline smoother estimated the variable as a linear effect on the hazard rate. This is the case for Age and time  
+  * BMI, ApacheIIScore and CombinedicuID (only frailty effect) seem to have a non-linear effect on the hazard rate  
+  * those effects can also be seen graphically which shows the effect of the variable's values on the   \textcolor{red}{linear predictor aka the log(hazard-rate)}  
+  * time (tend) has a falling slope aka a decreasing effect on the log(hazard) -> has hazard decreases also   
+  * ApacheIIScore has almost linear effect: (log-) hazard increases with increasing Apache Scores though this increase is getting lower with higher values of the score  
+  * increasing linear age effect, the older, the higher the (log-)hazard  
+  * typical shape of the BMI effect, very low BMIs have increased hazard, that decreases toward "normal" BMIs, high uncertainty with respect to effect of very high BMIs as number of patients with respective BMIs decreases (few persons with very high obesity)  
+```{r, echo = FALSE}
+gg_smooth(x = ped, fit = pamm_icu, terms = c("tend", "Age", "BMI", "ApacheIIScore"))
+```
+* non-smooth terms for categorical variables:
+  * exponentiate the coefficients ```exp(beta)``` and interpret their __mulitplicative__ effect on the hazard rate w.r.t the reference category  
+  * example 1: hazard rate for a person treated in 2009 is exp(-0.08622441) = 0.9173883 times as high as the hazard rate for similar person treated in 2007 (reference category)  
+  * example 2: hazard rate for a person with Metabolic cancer is exp(-0.92767602) = 0.3954717 times as high as the hazard rate for similar person with Gastrointestinal cancer (reference category)  
+  * For more, interpret this table:  
+  
+```{r, echo = FALSE}
+param.beta <- coef(pamm_icu)[2:14]
+cbind(beta=param.beta, HR=exp(param.beta))
+```
+
+
+
+# Frailty models 
+
+# Aalen model
+
+### model equation
+
+$$
+\lambda(t) = \lambda_0(t) + x'(t)\beta(t) = \sum_{k = 1}^px_k(t)\beta_k(t)
+$$
+with additive effects of time-varying covariates on baseline hazard rate
+
+# Cox-Aalen model
+
+### model equation
+
+$$
+\lambda(t) = \lambda_0(t) + X(t)\beta(t) \cdot exp(Z(t)'\gamma)
+$$
+with additive effects of time-varying covariates on baseline hazard rate which are also multiplicatively affected via Cox part of the model. $\gamma$ are time-constant coefficients, PH-assumption, and $\beta$ are time varying additive coefficients by the Aalen-part. 
+
+### Data 
+
+looks like that
+
+```{r, echo = FALSE}
+load("data/liver81.RData")
+
+a = c("major_complications", "age", "charlson_score", "sex", "transfusion", 
+  "metastasesYN", "major_resection", "days", "status", "id", "metastases")
+
+colnames(liver) = a
+head(liver)
+```
+
+
+
+### What can we say from the graphic?
+
+* Age:
+  * the cumulative Hazard of a person aged A+1 at time point t = 1500 is 0.01 higher than that of a person aged A
+  * the effect of metastases on the cumulative hazard rate starts to increase t = 1000 after the surgery and is approx. constant before
+* Complications:
+  * the cumulative Hazard of a person with major complications at time point t = 1500 is 0.2 higher than that of a person without complications
+  * the effect of complications on the cumulative hazard rate decreases over time
+* Metastases:
+  * the cumulative Hazard of a person with metastases at time point t = 2500 is 0.4 higher than that of a person without metastases
+  * the effect of metastases on the cumulative hazard rate starts to matter only after t = 1500 and then increases more or less linearly
+  * before t = 1500 the effect is non siginificant as the 0 is part of the confidence intervals
+
+Effects for the continous variables estimated as additive via the Aalen-part of the model using the formula ```Surv(days, status) ~ age +  charlson_score + major_complications + metastases + prop(sex) + prop(transfusion) + prop(major_resection), data = liver, residuals = 1, basesim   = 1)```
+
+```{r, echo =FALSE}
+## Cox-Aalen Model
+mod_ca <- cox.aalen(
+  formula   = Surv(days, status) ~ age +  charlson_score + major_complications + metastases +
+    prop(sex) + prop(transfusion) + prop(major_resection),
+  data      = liver, residuals = 1, basesim   = 1)
+#layout(matrix(1:4, nrow=2))
+plot(mod_ca, specific.comps = c(2:5), las=2)
+```
+
+### What can we say from the model summary?
+
+```{r, echo = FALSE}
+summary(mod_ca)
+```
+
+* Aalen part:
+  * Supremum-test: for all 4 variables the H0: no effect can be rejected
+  * Kolmogorov Smirnov for time variant effects: H0: constant effect can only clearly be rejected for metastases 
+\textcolor{red}{DISCUSS THIS}
+* Cox part:
+  * kkk
+  
+  
+Compare this with the PAM fitted on the data using the below formula. We explicitly model time varying effects of the 4 variables (metastases, marjo_complications, age, charlson) as in the Aalen model via ti(). 
+
+```
+bam(
+  formula = ped_status ~ ti(tend,k=10) +
+    # use ti() for non-identifiability issue
+    metastases + ti(tend, by = as.ordered(metastases),k=10, mc = c(1,0)) +
+    major_complications + ti(tend,by = as.ordered(major_complications),k=10, mc = c(1,0)) +
+    age + ti(tend, by = age,k=10, mc = c(1,0)) +
+    charlson_score + ti(tend, by = charlson_score,k=10, mc = c(1,0)) +
+    sex + transfusion + major_resection,
+  data   = ped_liver,
+  offset = offset,
+  family = poisson())
+```
+
+The figure below shows the effect of the __time constant variables__ which allow some interpretation:
+
+* NOTE: Constant contributions to time-varying can be interpreted as effects at t=0 \textcolor{red}{DISCUSS THIS}
+* sex: Compared to males, females have a 1.22 times increased risk of experiencing an event (c.p.)
+* transfusion: Compared to patients without transfusion, patients with transfustion have a 1.27 times increased risk of experiencing an event (c.p.)
+* major resection: A major resection increases the risk of event by a factor of 1.28, compared to patients without a major resection
+
+
+```{r, echo =FALSE, cache=TRUE}
+
+## PAM
+# linear effect of age that varies non-linearly over time
+ped_liver <- split_data(Surv(days, status)~., data=liver, id="id")
+
+mod_pam <- bam(
+  formula = ped_status ~ ti(tend,k=10) +
+    # use ti() for non-identifiability issue
+    metastases + ti(tend, by = as.ordered(metastases),k=10, mc = c(1,0)) +
+    major_complications + ti(tend,by = as.ordered(major_complications),k=10, mc = c(1,0)) +
+    age + ti(tend, by = age,k=10, mc = c(1,0)) +
+    charlson_score + ti(tend, by = charlson_score,k=10, mc = c(1,0)) +
+    sex + transfusion + major_resection,
+  data   = ped_liver,
+  offset = offset,
+  family = poisson())
+
+## Fixed effects
+#tidy_fixed(mod_pam) %>% mutate("exp(coef)" = exp(coef))
+# interpret non-time varying effects of 
+gg_fixed(mod_pam)
+
+```
+
+Model summary:
+
+```{r, echo = FALSE}
+summary(mod_pam)
+```
+
+This is the effect estimated for the smooth terms. The total effect of x at time point t = $\beta_x * x + f_x(t)$ where $\beta_x * x$ are the constant effects from the previous graphic and $f_x(t)$ models the effect of the smooth time varying term. They look like that:
+
+```{r, echo = FALSE}
+## Smooth effects
+pam_smooths <- tidy_smooth(mod_pam)
+ggplot(pam_smooths, aes(x=x, y = fit)) +
+  geom_stepribbon(aes(ymin = low, ymax = high), alpha = 0.3) +
+  geom_step() +
+  facet_wrap(~ylab, scale="free_y")
+# NOTE: here we visualize the additional time-varying contribution
+# The total effect of x, e.g. x = age, will be \beta_x * x + f_x(t)*x
+```
+
+Visual comparison of the time-varying effects from Cox-Aalen model on the cumulated Hazard over time (black) vs. the smooth multiplivative effects of the PAM model (red).
+
+```{r, echo = FALSE} 
+## Visual comparison cumulative (time-varying) coefficients of Cox-Aalen model
+# COMPARE: cox.aalen vs. pam 
+# step functions in black: additive effects of aalen part of cox.aalen vs.
+# red: smooth multiplicative effects of the pam model
+
+# layout(matrix(1:4, nrow=2, byrow=T))
+age46_df <- ped_liver %>% ped_info() %>%
+  mutate(age = 46) %>% add_cumu_hazard(mod_pam)
+age45_df <- ped_liver %>% ped_info() %>%
+  mutate(age = 45) %>% add_cumu_hazard(mod_pam)
+plot(mod_ca, specific.comp = c(2), las = 2)
+lines(age46_df$tend, age46_df$cumu_hazard - age45_df$cumu_hazard, col = 2, lwd = 2)
+
+charlson3_df <- ped_liver %>% ped_info() %>%
+  mutate(charlson_score = 3) %>% add_cumu_hazard(mod_pam)
+charlson2_df <- ped_liver %>% ped_info() %>%
+  mutate(charlson_score = 2) %>% add_cumu_hazard(mod_pam)
+plot(mod_ca, specific.comp = c(3), las = 2)
+lines(charlson3_df$tend, charlson3_df$cumu_hazard - charlson2_df$cumu_hazard,
+  col = 2, lwd = 2)
+
+metastasesy_df <- ped_liver %>% ped_info() %>%
+  mutate(metastases = 'yes') %>% add_cumu_hazard(mod_pam)
+metastasesn_df <- ped_liver %>% ped_info() %>%
+  mutate(metastases = 'no') %>% add_cumu_hazard(mod_pam)
+plot(mod_ca, specific.comp = c(5), las = 2)
+lines(metastasesy_df$tend, metastasesy_df$cumu_hazard - metastasesn_df$cumu_hazard,
+  col = 2, lwd = 2)
+
+mcy_df <- ped_liver %>% ped_info() %>%
+  mutate(major_complications = 'yes') %>% add_cumu_hazard(mod_pam)
+mcn_df <- ped_liver %>% ped_info() %>%
+  mutate(major_complications = 'no') %>% add_cumu_hazard(mod_pam)
+plot(mod_ca, specific.comp = c(4), las = 2)
+lines(mcy_df$tend, mcy_df$cumu_hazard - mcn_df$cumu_hazard, col = 2, lwd = 2)
+```
+
+
+# Competing Risk models
+
