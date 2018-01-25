@@ -1,7 +1,7 @@
 ---
 title: "LDA Interpretation"
 author: "Jann Goschenhofer"
-date: "25. 1. 2018"
+date: "January 2018"
 output:
   pdf_document:
     toc: yes
@@ -24,6 +24,7 @@ setwd("/Users/Jann/Desktop/Repos/survival")
 
 library(ggplot2)
 theme_set(theme_bw())
+library(pec)
 library(tidyr)
 library(dplyr)
 library(mgcv)
@@ -39,13 +40,191 @@ library(pammtools)
 
 # Kaplan Meier
 
+### Model Equation
+
+Estimate the __Survival rate__ non-parametrically without any covariables: 
+
+$$
+\hat S(t) = \prod_{t_k \leq t}(1-d_k / n_k), \forall t \geq t_1
+$$
+where $d_k =$ number of events at time point $t_k$ (neither dead nor censored) and $n_k = $ amount of people under risk right before time $t_k$.
+
+Reveals a step function with jumps at each $t_k$ where events took place. 
+
+### Data 
+
+This is some random SOEP data and we estimate Survival functions for both genders: 
+
+```{R, echo = FALSE}
+
+## Read in data
+soep <- read.csv("data/soep2000.csv", header = TRUE, sep = ";") # Einlesen Daten
+head(soep)
+
+```
+
+### Model
+
+```{R, echo = FALSE}
+
+par(mar=c(5,5,4,4))
+## Estimate the survivor function for duration of unemployment separately for
+## each gender (Kaplan-Meier)
+## Note: Here the event is something positive (end of unemployment),
+# thus high survival rates have negative meaning (i.e. staying unemployed longer)
+km_sex <- survfit(Surv(dauer, status) ~ female, data = soep)
+
+plot(km_sex, lwd = 2,
+  xlab = "Time in months t", las = 1,
+  ylab = expression(hat(S)[KM](t)), lty = c(1, 2),
+  main = "Duration of unemployment by gender\n (Kaplan-Meier estimator)")
+
+legend("topright", legend = c("male", "female"), lty = c(1, 2))
+## Comparison of the curves:
+## After how many months are 50% of the persons no longer unemployed?
+abline(h = 0.5, lty = 3)
+```
+
+### Test
+
+```{R, echo = FALSE}
+
+## Log-rank test for comparing the two groups
+# in default mode rho=0 this computes the log-rank test, muchacho
+survdiff(Surv(dauer, status) ~ female, data = soep)
+
+```
+
+
 # Nelson Aalen
 
 # Accelerated Failure Time Transformation models
 
+
+
+
 # Cox Regression model
 
-# Residual Analysis
+### Model equation
+
+$$
+\lambda_i(t) = \lambda_0(t) exp(x_i'\beta)
+$$
+
+### Data
+
+where delta depicts the event indicator (delta = 1: non-censored, delta = 0: censored)
+
+```{r, echo = FALSE}
+
+## Read in data
+data("tongue", package = "KMsurv")
+tongue <- tongue %>% mutate(type = as.factor(type))
+head(tongue)
+```
+
+
+### Model
+
+We are searching for the effect of the binary treatment type. 
+
+* Person with treatment 2 has a multiplicative factor exp(0.4664) = 1.594245 higher hazard rate than a person with treatment 1
+* this effect is not significant as the H0 can not be rejected at $\alpha = 0.05$, but this does not imply testing of the PH assumption \textcolor{red}{DISCUSS}
+* log rank score test: tests for significant differencies in the survival curves for the two subpopulations divided by the variable of interest (here: treatment). This means that the probability of an event occurring at any time point is the same for each subpopulation. H0: they do not differ -> p > 0.05: H0 cannot be rejected -> no significant effect of treatment.
+
+Summary of the Cox-PH model:
+
+```{r, echo = FALSE}
+## Cox-PH model
+cox.tongue <- coxph(Surv(time, delta) ~ type, data = tongue)
+summary(cox.tongue)
+
+```
+
+### Test the Cox PH assumption for the covariates
+
+#### Graphically
+
+The scaled Schoenfeld residuals are used for that test and plotted against the time. Do this for each covariate to check the PH assumption for each covariate. If they __randomly and unstructured__ center around zero: PH assumption holds! If not, not. The plot estimates a smooth function of the residuals over time for better visualization. Holds here:
+
+
+```{r, echo =FALSE}
+plot(cox.zph(cox.tongue))
+```
+
+#### Test PH
+
+Also based on Schoenfeld residuals, not exam-relevant. If $p >> 0.05$ there is no violation of the PH. 
+
+### Test overall fit
+
+Plot Cox-Snell residuals vs. Cumulated Hazard. If they share the diagnonal, everything is fine and we have a good overall model fit. 
+
+```{r, echo = FALSE}
+cox.res.cs <- tongue$delta - residuals(cox.tongue, type = "martingale")
+
+cox.res.surv <- survfit(Surv(cox.res.cs, tongue$delta) ~ 1) %>%
+  broom::tidy() %>%
+  mutate(
+    Lambda = -log(estimate),
+    F      = pexp(time)) %>%
+  rename(cs.residual = time)
+
+## plot empirical F for censored observations vs. cs residuals (and compare to Exp(1))
+# ggplot(cox.res.surv, aes(x=cs.residual, y=1-estimate)) +
+#   geom_point() +
+#   geom_step() +
+#   geom_line(aes(y=F), col=2) +
+#   ylim(c(0,1)) + ylab(expression(F(r[i]^{CS}))) + xlab(expression(r[i]^{CS}))
+
+## usual visualization of cs residuals vs. cumulative hazard (for censored sample)
+ggplot(cox.res.surv, aes(x=cs.residual, y=Lambda)) +
+  geom_point() +
+  geom_step() +
+  geom_abline(intercept=0, slope=1, col=2) + # add bisector (Winkelhalbierende)
+  ylab(expression(hat(Lambda)(r[i]^{CS}))) + xlab(expression(r[i]^CS))
+
+```
+
+# Model fit Analysis
+
+## Prediction Error Curves (PEC)
+
+The predicted survival time for each time point is compared with the true survival time within the __Brier Score__. Some magic is added such as _inverse probability of censoring weights (IPCW)_ to account for right censoring. Then scores for each time point are computed using Cross-Validation and the Brier Scores over time are plotted for all desired models. The lower the score, the better. This method is __model agnostic__. 
+
+For Melanoma compare predictive performance of Cox model with only variable ulcer as predictor with the reference Kaplan-Meier estimates and a Cox-PH model that uses year as a linear predictor. We see, that our cox-model outperforms the simple Kaplan-Meier estimator (which does not use any variables) and both outperform the stupid Cox model with time as linear predictor.   
+
+```{R, echo = FALSE, message = FALSE, warnings = FALSE}
+library(survival)
+library(pec)
+data("Melanoma", package="MASS")
+cox_ulcer <- coxph(Surv(time, status ==1) ~ ulcer, data = Melanoma)
+## Estimate CV PEC for even grid of time points between 0 and 4000
+pec_obj <- pec::pec(list(cox_ulcer = cox_ulcer),
+  formula = Surv(time, status == 1) ~ year + ulcer, 
+  data = Melanoma, exact = FALSE, 
+  times = seq(0, 4000, by = 200),
+  splitMethod = "cv10", B = 20, 
+  ipcw.refit = TRUE, 
+  reference = TRUE)
+
+mod_list <- list(cox_ulcer = cox_ulcer,
+  cox_year = update(cox_ulcer, .~. -ulcer + year))
+pec_obj2 <- pec::pec(mod_list, Surv(time,status==1)~year + ulcer,
+  data =  Melanoma, times = seq(0,4000, by=200),
+  splitMethod = "cv10", B = 20, ipcw.refit = TRUE, exact = FALSE)
+plot(pec_obj2)
+```
+
+
+
+
+## Residuals
+
+* Schoenfeld 
+* Martingale
+* Deviance
+* Cox-Snell
 
 # Semi-parametric additive Cox model
 
