@@ -7,7 +7,7 @@ output:
     toc: yes
   html_document:
     toc: yes
-    toc-depth: 2
+    toc-depth: 3
 ---
 
 ```{r setup, include=FALSE}
@@ -24,7 +24,10 @@ setwd("/Users/Jann/Desktop/Repos/survival")
 
 library(ggplot2)
 theme_set(theme_bw())
+library(data.table)
+library(magrittr)
 library(pec)
+library(broom)
 library(tidyr)
 library(dplyr)
 library(mgcv)
@@ -100,16 +103,70 @@ survdiff(Surv(dauer, status) ~ female, data = soep)
 
 # Accelerated Failure Time Transformation models
 
+## Weibull Model
 
 
+
+### Model equation 
+
+model Survival time directly
+
+$$
+T = exp(Y) = exp(\beta_0) * exp(X^T\beta) * exp(\sigma \epsilon)
+$$
+$$
+\text{with } \epsilon \sim \text{Distribution e.g.: SEV, Normal, logistic, .....}  
+$$
+Then use density-transformation to get distribution for T (Survival time). 
+
+Steps:
+1. calculate density for T 
+2. classic Maximum Likelihood Estimation
+
+### Data 
+
+where delta depicts the event indicator (delta = 1: non-censored, delta = 0: censored)
+
+```{r, echo = FALSE}
+
+## Read in data
+data("tongue", package = "KMsurv")
+tongue <- tongue %>% mutate(type = as.factor(type))
+head(tongue)
+```
+
+### Model
+
+```{R, echo = FALSE}
+## AFT: Weibull model
+weibull.tongue <- survreg(Surv(time, delta) ~ as.factor(type), dist = "weibull",data = tongue)
+summary(weibull.tongue)
+```
+
+* Survival time decreases by factor exp(-0.669) = 0.512 for patient with type 2 w.r.t. type 1 given constant other features 
+* Not siginificant with $p = 0.056$
+* Failure time accelerates by factor 1 / 0.512 = 1.953125 \textcolor{red}{DISCUSS}
+* Scale Parameter = 1.24 -> if it was 1.0 we would yield an exponential distributed model. This would yield $\lambda{t} = \lambda$, constant and independent of time. 
+* Weibull model: not constant $\lambda(t) = \lambda * \alpha (\lambda*t)^{\alpha - 1}$ but hazard ratio still independent of time -> PH assumption
 
 # Cox Regression model
+
+Estimates coefficents $\beta$ that have multiplicative effect on time-dependent hazard $\lambda_0(t)$. The baseline hazard is estimated non-parametrically via Breslow estimate. Thus, we yield step-functions for visualization, estimation, ...
+
 
 ### Model equation
 
 $$
 \lambda_i(t) = \lambda_0(t) exp(x_i'\beta)
 $$
+
+
+To get the estimator for the cumulative Hazard rate:
+1. estimate $\beta$s via Cox
+1. estimate non-parametrically baseline hazards $\lambda_0(t)$
+1. calculate for each t $\lambda(t) = \lambda_0(t) exp(x_i'\beta)$
+1. cumulate the $\lambda(t)$ to the cumulative Hazards $\Lambda_{t} = \sum_{i = 1}^t \lambda_i$
+1. calculate estimated Survival $S(t) = exp(-\Lambda_t)$
 
 ### Data
 
@@ -128,9 +185,9 @@ head(tongue)
 
 We are searching for the effect of the binary treatment type. 
 
-* Person with treatment 2 has a multiplicative factor exp(0.4664) = 1.594245 higher hazard rate than a person with treatment 1
-* this effect is not significant as the H0 can not be rejected at $\alpha = 0.05$, but this does not imply testing of the PH assumption \textcolor{red}{DISCUSS}
-* log rank score test: tests for significant differencies in the survival curves for the two subpopulations divided by the variable of interest (here: treatment). This means that the probability of an event occurring at any time point is the same for each subpopulation. H0: they do not differ -> p > 0.05: H0 cannot be rejected -> no significant effect of treatment.
+* Person with type 2 has a multiplicative factor exp(0.4664) = 1.594245 higher hazard rate than a person with type 1 (ceteris paribus in case of other covariates)
+* this effect is not significant as the H0 can not be rejected at $\alpha = 0.05$, REMIND but this does not imply testing of the PH assumption
+* log rank score test: tests for significant differencies in the survival curves for the two subpopulations seperated by the variable of interest (here: treatment). This means that the probability of an event occurring at any time point is the same for each subpopulation. H0: they do not differ -> p > 0.05: H0 cannot be rejected -> no significant effect of treatment. \textcolor{red}{WHAT HAPPENS WITH MORE COVARIATES? E.G.: one significant, the other not}
 
 Summary of the Cox-PH model:
 
@@ -226,6 +283,169 @@ plot(pec_obj2)
 * Deviance
 * Cox-Snell
 
+### Schoenfeld Residuals
+
+Use case: test PH assumption for each covariate
+
+Idea: compute Schoenfeld residuals for Variable $k$ and $m$ observations. Those residuals should be independent of the survival time. This is the test that ```cox.zph()``` performs. 
+
+
+#### Test
+
+```{R, echo = FALSE}
+
+### DATA 
+
+prison = read.table("http://socserv.mcmaster.ca/jfox/Books/Companion/data/Rossi.txt")%>%
+  mutate(subject=row_number())
+
+# transform data to binary
+
+for (column in colnames(prison)) {
+  if (is.factor(prison[, column])) {
+    
+    levels(prison[, column]) = c(levels(prison[, column]), 1, 0)
+    
+    # for employment data
+    prison[, column] = replace(prison[, column], prison[, column] == "yes", 1)
+    prison[, column] = replace(prison[, column], prison[, column] == "no", 0)
+
+    # race
+    prison[, column] = replace(prison[, column], prison[, column] == "black", 1)
+    prison[, column] = replace(prison[, column], prison[, column] == "other", 0)
+
+    # mar
+    prison[, column] = replace(prison[, column], prison[, column] == "married", 1)
+    prison[, column] = replace(prison[, column], prison[, column] == "not married", 0)
+    
+    # delete empty levels 
+    # prison[, column] = as.factor(as.character(prison[, column]))
+    # try numeric values, YES this is it
+    prison[, column] = as.integer(as.character(prison[, column]))
+  }
+}
+
+## transform to long format to accommodate time-varying covariates
+prison.long <- prison %>%
+  gather(calendar.week, employed, emp1:emp52) %>%
+  filter(!is.na(employed)) %>% # employed unequal to NA only for intervals under risk
+  group_by(subject) %>%
+  mutate(
+    start = row_number()-1L,
+    stop = row_number(),
+    arrest = ifelse(stop==last(stop) & arrest==1, 1, 0),
+    calendar.week = as.integer(sub("emp", "", calendar.week))) %>%
+  select(subject, calendar.week, start, stop, arrest, employed, fin:educ) %>%
+  arrange(subject, start, stop) %>%
+  ungroup()
+
+prison.long %<>% mutate(employed.lag1 = lag(employed, default=1))
+
+prisss = prison.long %>%
+  mutate(employed.lag1 = lag(employed, default = 0))
+
+m4 <- coxph(Surv(start, stop, arrest) ~ fin + age + prio + mar + employed.lag1, data = prison.long)
+
+zph.prison <- cox.zph(m4, transform="identity")
+zph.prison
+```
+
+Small p-value for variable age indicates problem with the PH assumption here. High value for employed.lag1 indicates nice fulfillment of PH assumption. 
+
+Can we observe this graphically?
+
+#### Graphically
+
+Plot the Schoenfeld residuals for variable age:
+
+```{R, echo = FALSE}
+
+dfage = as.data.frame(cbind(zph.prison$x, zph.prison$y[,2]))
+colnames(dfage) = c("time", "ageresidual")
+
+# smallest p-value for age variable, GLOBAL p = 0.094
+schaledsch.m4 <- get_scaledsch(m4, transform="identity")
+# check age
+ggplot(filter(schaledsch.m4, variable=="age"), aes(x=time, y=residual)) +
+  geom_point(alpha=0.7) +
+  geom_smooth(method="gam", formula=y~s(x)) +
+  geom_hline(yintercept = 0, lty=2, col=2) +
+  ggtitle(label = "Scaled Schoenfeld residuals for variable age")
+
+```
+
+PH assumption violated because there is non linear structure in the data. 
+
+What can we do? Exclude variable or model time varying effect // non-linearly e.g. using splines
+
+Check variable ```employed lag1``` that had huge p-value in zph test (good sign for PH):
+
+```{R, echo = FALSE}
+# check employed lag
+ggplot(filter(schaledsch.m4, variable=="employed.lag1"), aes(x=time, y=residual)) +
+  geom_point(alpha=0.7) +
+  geom_smooth(method="gam", formula=y~s(x)) +
+  geom_hline(yintercept = 0, lty=2, col=2) +
+  ggtitle(label = "Scaled Schoenfeld residuals for variable employed.lag1")
+
+```
+
+We see what we expected: there seems to be no PH violation. Sweet!
+
+### Cox Snell residuals
+
+Use case: Check overall goodness of fit
+
+#### Model 
+
+#### Example
+
+Check the overall goodness of fit for a simple cox model: 
+
+```{R, echo  = FALSE}
+data("tongue", package = "KMsurv")
+tongue <- tongue %>% mutate(type = as.factor(type))
+# or:
+#tongue <- read.table("tongue.dat", header = TRUE)
+#head(tongue)
+#str(tongue)
+
+## Cox-PH model
+cox.tongue <- coxph(Surv(time, delta) ~ type, data = tongue)
+summary(cox.tongue)
+
+cox.res.cs <- tongue$delta - residuals(cox.tongue, type = "martingale")
+
+
+# survfit estimate the 1 - F, where F is the empirical distribution estimate for
+# the censored sample of cox snell residuals
+
+cox.res.surv <- survfit(Surv(cox.res.cs, tongue$delta) ~ 1) %>%
+  broom::tidy() %>%
+  mutate(
+    Lambda = -log(estimate),
+    F      = pexp(time)) %>%
+  rename(cs.residual = time)
+
+## plot empirical F for censored observations vs. cs residuals (and compare to Exp(1))
+ggplot(cox.res.surv, aes(x=cs.residual, y=1-estimate)) +
+  geom_point() +
+  geom_step() +
+  geom_line(aes(y=F), col=2) +
+  ylim(c(0,1)) + ylab(expression(F(r[i]^{CS}))) + xlab(expression(r[i]^{CS}))
+
+## usual visualization of cs residuals vs. cumulative hazard (for censord sample)
+ggplot(cox.res.surv, aes(x=cs.residual, y=Lambda)) +
+  geom_point() +
+  geom_step() +
+  geom_abline(intercept=0, slope=1, col=2) + # add bisector (Winkelhalbierende)
+  ylab(expression(hat(Lambda)(r[i]^{CS}))) + xlab(expression(r[i]^CS))
+```
+
+Two options:
+1. Plot cs-residuals against estimated distribution Function values. Their distribution should then follow a standard exponential distribution if the model is fit correctly.
+2. Plot against estimted cumulative hazard function. This should result in a straight line if the model fits the data. 
+
 # Semi-parametric additive Cox model
 
 # Time discrete Survival models
@@ -239,6 +459,39 @@ $$
 $$
 
 with constant baseline hazards in each of the $J$ intervals.
+
+### Data
+
+
+```{R, echo = FALSE}
+## load Freireich data
+data(leuk2, package = "bpcp")
+leuk2$treatment <- relevel(leuk2$treatment, ref = "placebo")
+
+## i) Data transformation
+## transform the data into piece-wise exponential format
+# -> use unique event/censoring times as cut points
+event.times <- unique(leuk2$time)
+
+# use split_data function from pammtools package
+# devtools::install_github("adibender/pammtools")
+leuk.ped <- split_data(Surv(time, status)~., cut=event.times, data=leuk2, id="id")
+# dim(leuk.ped)
+head(leuk.ped)
+
+```
+
+We fit an intercept-only model for many intervals resulting in many baseline intercepts:
+
+```{R, echo = FALSE}
+pem  <- glm(ped_status ~ interval-1, offset=offset, data=leuk.ped, family=poisson(link = log))
+summary(pem)
+
+```
+
+* we fit way too many parameters
+* intervals which did not face events have super high standard errors and strange coefficients
+* -> Two reasons for fitting PAM's with smooth baseline hazards
 
 # Piecewise additive exponential models (PAM)
 
@@ -361,7 +614,8 @@ summary(pamm_icu)
 * smooth terms for continuos variables:  
   * if the edf (estimated degress of freedom) = 1, our spline smoother estimated the variable as a linear effect on the hazard rate. This is the case for Age and time  
   * BMI, ApacheIIScore and CombinedicuID (only frailty effect) seem to have a non-linear effect on the hazard rate  
-  * those effects can also be seen graphically which shows the effect of the variable's values on the   \textcolor{red}{linear predictor aka the log(hazard-rate)}  
+  * \textcolor{red}{HOW TO INTERPRET SPLINE FOR COMBINEDICUID FRAILTY @ ANDREAS}
+  * those effects can also be seen graphically which shows the effect of the variable's values on the   \textcolor{red}{linear predictor aka the log(hazard-rate)}. This is the exact value that enters our linear predictor, e.g. 75 year old person enters 0.3
   * time (tend) has a falling slope aka a decreasing effect on the log(hazard) -> has hazard decreases also   
   * ApacheIIScore has almost linear effect: (log-) hazard increases with increasing Apache Scores though this increase is getting lower with higher values of the score  
   * increasing linear age effect, the older, the higher the (log-)hazard  
