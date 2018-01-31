@@ -103,9 +103,128 @@ survdiff(Surv(dauer, status) ~ female, data = soep)
 
 # Accelerated Failure Time Transformation models
 
+Assumption: covariates have a multiplicative effect on the __Survival time__. E.g.: Survival time for smokers is an accelerated version of the survival time for non-smokers. We model the survival time directly with the log-trafo:
+
+$$
+log(T) = Y = \beta_0 + X^T\beta + \sigma \epsilon
+$$
+
+$$
+T = exp(Y) = exp(\beta_0) * exp(X^T\beta) * exp(\sigma \epsilon)
+$$
+$$
+\text{with } \epsilon \sim \text{Distribution e.g.: SEV, Normal, logistic, .....}  
+$$
+Then use density-transformation to get distribution for T (Survival time). 
+
+Thus, the effect of the estimated coefficient $\hat\beta_j$ on Survival time T is $exp(\beta_j)$
+
+Steps for the estimation:
+1. calculate density for T 
+2. classic Maximum Likelihood Estimation
+
+
+
+## Examples for all AFT's 
+
+The exponential and the weibull AFT can be compared with a Cox PH model as they also have proportional (time independent) hazard ratios. This means that the following re-parametrization holds:
+$$
+\beta_{PH} = - \frac{\beta_{\text{AFT: WB or Exp}}}{\sigma}
+$$
+where $sigma$ is our scale parameter from the AFT model equation.   
+
+Therefore we compare with this baseline Cox model:
+
+```{R, echo = FALSE}
+## Cox PH model
+coxphFit <- coxph(Surv(futime, fustat) ~ ecog.ps + rx, ovarian)
+summary(coxphFit)
+```
+
+
+### Exponential
+
+```{R, echo = FALSE}
+## Exponential model
+survregExp <- survreg(Surv(futime, fustat) ~ ecog.ps + rx, ovarian,
+  dist = "exponential")
+summary(survregExp)
+```
+
+#### AFT interpretation:
+
+* Geometric mean of survival time: 1055  
+* 1 unit change in ecog.ps shortens survival time by exp(-0.433) = 0.65  
+* 1 unit change in rx increases survival time by exp(0.582) = 1.79  
+* though, both effects are non significant  
+
+```{R, echo = FALSE}
+exp(coef(survregExp))
+```
+
+#### PH interpretation (invert the coefficients)
+* 1 unit change in ecog.ps increases the hazard h(t) by 1/exp(0.433) = 1.54  
+* 1 unit change in rx decreases h(t) by 0.56  
+
+```{R, echo = FALSE}
+exp(-1 * coef(survregExp))
+```
+
+
+### Weibull
+
+
+```{R, echo = FALSE}
+## Exponential model
+survregWB <- survreg(Surv(futime, fustat) ~ ecog.ps + rx, ovarian,
+  dist = "weibull")
+summary(survregWB)
+```
+
+#### AFT interpretation:
+
+* Geometric mean of survival time: 988 
+* 1 unit change in ecog.ps shortens survival time by exp(-0.385) = 0.68  
+* 1 unit change in rx increases survival time by exp(0.529) = 1.70 
+* though, both effects are non significant  
+* If scale parameter ```{R, echo = FALSE} survregWB$scale ``` was close to 1 we would yield an exponential model. Our shape parameter is 1 / scale
+* coefficients: ```{R, echo = FALSE} exp(coef(survregWB)) ```
+
+
+#### PH interpretation (multiply by -1 and the shape parameter before exp())
+* 1 unit change in ecog.ps increases the hazard h(t) by 1.55 
+* 1 unit change in rx decreases h(t) by 0.55
+
+```{R, echo = FALSE}
+shapeParameter <- 1 / survregWB$scale
+exp(-1 * shapeParameter * coef(survregWB))
+```
+
+### Log Normal
+
+Only AFT Interpretation!
+
+* 1 unit incrase in ecog.ps shortens survival time by exp(-.229) = 0.79
+* 1 unit incrase in rx increases survival time by exp(0.813) = 2.25
+* \textcolor{red}{MORE TO ADD! DISCUSS}
+
+```{R, echo = FALSE}
+## Log Normal model
+survregLogNormal <- survreg(Surv(futime, fustat) ~ ecog.ps + rx, ovarian, dist = "lognormal")
+summary(survregLogNormal)
+```
+
+### Log logistic
+
+
+```{R, echo = FALSE}
+## Log Logistic model
+survregLogLogistic <- survreg(Surv(futime, fustat) ~ ecog.ps + rx, ovarian, dist = "loglogistic")
+summary(survregLogLogistic)
+
+```
+
 ## Weibull Model
-
-
 
 ### Model equation 
 
@@ -153,6 +272,8 @@ summary(weibull.tongue)
 
 Estimates coefficents $\beta$ that have multiplicative effect on time-dependent hazard $\lambda_0(t)$. The baseline hazard is estimated non-parametrically via Breslow estimate. Thus, we yield step-functions for visualization, estimation, ...
 
+[super sweet R-bloggers post on Cox models](https://www.r-bloggers.com/cox-model-assumptions/)
+
 
 ### Model equation
 
@@ -161,12 +282,12 @@ $$
 $$
 
 
-To get the estimator for the cumulative Hazard rate:
-1. estimate $\beta$s via Cox
-1. estimate non-parametrically baseline hazards $\lambda_0(t)$
-1. calculate for each t $\lambda(t) = \lambda_0(t) exp(x_i'\beta)$
-1. cumulate the $\lambda(t)$ to the cumulative Hazards $\Lambda_{t} = \sum_{i = 1}^t \lambda_i$
-1. calculate estimated Survival $S(t) = exp(-\Lambda_t)$
+To get the estimator for the cumulative Hazard and the Survival rate:  
+1. estimate $\beta$s via Cox  
+1. estimate non-parametrically baseline hazards $\lambda_0(t)$ e.g. via Breslow   
+1. ^^^calculate for each t $\lambda(t) = \lambda_0(t) exp(x_i'\beta)$  
+1. cumulate the $\lambda(t)$ to the cumulative Hazards $\Lambda_{t} = \sum_{i = 1}^t \lambda_i$  
+1. calculate estimated Survival $S(t) = exp(-\Lambda_t)$  
 
 ### Data
 
@@ -185,9 +306,9 @@ head(tongue)
 
 We are searching for the effect of the binary treatment type. 
 
-* Person with type 2 has a multiplicative factor exp(0.4664) = 1.594245 higher hazard rate than a person with type 1 (ceteris paribus in case of other covariates)
-* this effect is not significant as the H0 can not be rejected at $\alpha = 0.05$, REMIND but this does not imply testing of the PH assumption
-* log rank score test: tests for significant differencies in the survival curves for the two subpopulations seperated by the variable of interest (here: treatment). This means that the probability of an event occurring at any time point is the same for each subpopulation. H0: they do not differ -> p > 0.05: H0 cannot be rejected -> no significant effect of treatment. \textcolor{red}{WHAT HAPPENS WITH MORE COVARIATES? E.G.: one significant, the other not}
+* Person with type 2 has a multiplicative factor exp(0.4664) = 1.594245 higher hazard rate than a person with type 1 (ceteris paribus in case of other covariates)  
+* this effect is not significant as the H0 can not be rejected at $\alpha = 0.05$, REMIND but this does not imply testing of the PH assumption  
+* log rank score test: tests for significant differencies in the survival curves for the two   subpopulations seperated by the variable of interest (here: treatment). This means that the probability of an event occurring at any time point is the same for each subpopulation. H0: they do not differ -> p > 0.05: H0 cannot be rejected -> no significant effect of treatment. \textcolor{red}{WHAT HAPPENS WITH MORE COVARIATES? E.G.: one significant, the other not}
 
 Summary of the Cox-PH model:
 
@@ -247,9 +368,9 @@ ggplot(cox.res.surv, aes(x=cs.residual, y=Lambda)) +
 
 ## Prediction Error Curves (PEC)
 
-The predicted survival time for each time point is compared with the true survival time within the __Brier Score__. Some magic is added such as _inverse probability of censoring weights (IPCW)_ to account for right censoring. Then scores for each time point are computed using Cross-Validation and the Brier Scores over time are plotted for all desired models. The lower the score, the better. This method is __model agnostic__. 
+The predicted survival time for each time point is compared with the true survival time within the __Brier Score__. Some magic is added such as _inverse probability of censoring weights (IPCW)_ to account for right censoring. Then scores for each time point are computed using Cross-Validation and the Brier Scores over time are plotted for all desired models. The lower the score, the better. This method is __model agnostic__.  
 
-For Melanoma compare predictive performance of Cox model with only variable ulcer as predictor with the reference Kaplan-Meier estimates and a Cox-PH model that uses year as a linear predictor. We see, that our cox-model outperforms the simple Kaplan-Meier estimator (which does not use any variables) and both outperform the stupid Cox model with time as linear predictor.   
+For Melanoma compare predictive performance of Cox model with only variable ulcer as predictor with the reference Kaplan-Meier estimates and a Cox-PH model that uses year as a linear predictor. We see, that our cox-model outperforms the simple Kaplan-Meier estimator (which does not use any variables) and both outperform the stupid Cox model with time as linear predictor.     
 
 ```{R, echo = FALSE, message = FALSE, warnings = FALSE}
 library(survival)
@@ -497,9 +618,9 @@ summary(pem)
 
 New compared to PEM: smooth modeling of the piecewise constant baseline hazards e.g. via splines. Cool because:  
 
-* PEM constrained by use of intervals as high $J$ leads to parameter explosion  
-* Smoother curves due to penalization of splines on the overlaps of the intervals  
-* Problem PEM: no data in interval $]a_{l-1}, a_l]$ -> $\lambda_l = 0$, wiggely hazard rate curves  
+* PEM constrained by use of intervals as high $J$ leads to parameter explosion   
+* Smoother curves due to penalization of splines on the overlaps of the intervals    
+* Problem PEM: no data in interval $]a_{l-1}, a_l]$ -> $\lambda_l = 0$, wiggely hazard rate curves    
 
 ### Model equation:
 
