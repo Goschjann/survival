@@ -41,6 +41,16 @@ library(pammtools)
 
 ```
 
+# Censoring
+
+1. __Right__:  
+    1. Type 1: study ends before event occured. E.g.: fixed time study of 1 year
+    2. Type 2: ...
+    3. Type 3: person withdraws from study because of other event. E.g.: interest on cancer death, person is getting shot
+2. __Left__: we know when event occurs but we do not know when it started. E.g.: person dies at week 4 on cancer but we don't know the time of the disease outbreak. Our observed survival time of 4 weeks is thus equal (best case) or smaller then the observed. 
+3. __Left Truncation__: Biased because only people that survived made it to the study. E.g.: deductible in insurances, people with losses < deductibles are not getting observed. 
+
+
 # Kaplan Meier
 
 ### Model Equation
@@ -103,7 +113,11 @@ survdiff(Surv(dauer, status) ~ female, data = soep)
 
 # Accelerated Failure Time Transformation models
 
-Assumption: covariates have a multiplicative effect on the __Survival time__. E.g.: Survival time for smokers is an accelerated version of the survival time for non-smokers. We model the survival time directly with the log-trafo:
+Assumptions: 
+1. covariates have a multiplicative effect on the __Survival time__. E.g.: Survival time for smokers is an accelerated version of the survival time for non-smokers.   
+2. the survival time follows an assumed distribution that we get applying a density transformation
+
+We model the survival time directly with the log-trafo:
 
 $$
 log(T) = Y = \beta_0 + X^T\beta + \sigma \epsilon
@@ -115,8 +129,6 @@ $$
 $$
 \text{with } \epsilon \sim \text{Distribution e.g.: SEV, Normal, logistic, .....}  
 $$
-Then use density-transformation to get distribution for T (Survival time). 
-
 Thus, the effect of the estimated coefficient $\hat\beta_j$ on Survival time T is $exp(\beta_j)$
 
 Steps for the estimation:
@@ -206,6 +218,7 @@ Only AFT Interpretation!
 
 * 1 unit incrase in ecog.ps shortens survival time by exp(-.229) = 0.79
 * 1 unit incrase in rx increases survival time by exp(0.813) = 2.25
+* Can we interpret the scale parameter?
 * \textcolor{red}{MORE TO ADD! DISCUSS}
 
 ```{R, echo = FALSE}
@@ -946,4 +959,17 @@ lines(mcy_df$tend, mcy_df$cumu_hazard - mcn_df$cumu_hazard, col = 2, lwd = 2)
 
 
 # Competing Risk models
+
+# Random Stuff
+
+### Attest significance only based on $\beta$ and $se(\beta)$
+
+1. compute z-score: $z = \beta / se(\beta)$
+2. thresholds for $alpha = 0.05$:
+  1. one sided: $z_{thresh} = 1.64$
+  1. two sided: $z_{thresh} = 1.96$
+3. Reject H0 (coefficient is not significant) if $z > z_{thresh}$
+
+[check their explanation](http://jukebox.esc13.net/untdeveloper/RM/Stats_Module_4/Stats_Module_48.html)
+
 
