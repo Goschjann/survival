@@ -53,7 +53,11 @@ library(pammtools)
 
 # Kaplan Meier
 
+
+
 ### Model Equation
+
+Cannot simply $1-F(t)$ due to censoring. KM takes that into account. 
 
 Estimate the __Survival rate__ non-parametrically without any covariables: 
 
@@ -98,7 +102,16 @@ legend("topright", legend = c("male", "female"), lty = c(1, 2))
 abline(h = 0.5, lty = 3)
 ```
 
+This gives incidence for the Proportional Hazards assumption as survival curves are more or less parallel. 
+
+
 ### Test
+
+Plotting estimated confidence intervals __DOES NOT ENABLE__ us to interpret signifiance. KI's can cross, and still there is a significant effect. 
+
+* Only interpret the p-value of the log rank test!
+* log rank test resembles the score test in the cox model. 
+* ````surfdiff()``` for p = 2 > 1 variables: H0: no differencies across 4 resulting groups. If $p < \alpha:$ reject H0.  
 
 ```{R, echo = FALSE}
 
@@ -107,6 +120,8 @@ abline(h = 0.5, lty = 3)
 survdiff(Surv(dauer, status) ~ female, data = soep)
 
 ```
+
+
 
 
 # Nelson Aalen
@@ -296,11 +311,13 @@ $$
 
 
 To get the estimator for the cumulative Hazard and the Survival rate:  
-1. estimate $\beta$s via Cox  
-1. estimate non-parametrically baseline hazards $\lambda_0(t)$ e.g. via Breslow   
-1. ^^^calculate for each t $\lambda(t) = \lambda_0(t) exp(x_i'\beta)$  
-1. cumulate the $\lambda(t)$ to the cumulative Hazards $\Lambda_{t} = \sum_{i = 1}^t \lambda_i$  
-1. calculate estimated Survival $S(t) = exp(-\Lambda_t)$  
+
+1. estimate $\beta$s via Cox __parametrically__    
+1. estimate non-parametrically baseline hazards $\lambda_0(t)$ e.g. via Breslow __non-parametrically__  
+1. calculate for each t $\lambda(t) = \lambda_0(t) exp(x_i'\beta)$    
+1. cumulate the $\lambda(t)$ to the cumulative Hazards $\Lambda_{t} = \sum_{i = 1}^t \lambda_i$. ```basehaz()``` plottet $\Lambda_0$  
+1. calculate estimated Survival $S(t) = exp(-\Lambda_t)$    
+Therfore Cox PH model is termed __semi parametric__.   
 
 ### Data
 
@@ -321,7 +338,10 @@ We are searching for the effect of the binary treatment type.
 
 * Person with type 2 has a multiplicative factor exp(0.4664) = 1.594245 higher hazard rate than a person with type 1 (ceteris paribus in case of other covariates)  
 * this effect is not significant as the H0 can not be rejected at $\alpha = 0.05$, REMIND but this does not imply testing of the PH assumption  
-* log rank score test: tests for significant differencies in the survival curves for the two   subpopulations seperated by the variable of interest (here: treatment). This means that the probability of an event occurring at any time point is the same for each subpopulation. H0: they do not differ -> p > 0.05: H0 cannot be rejected -> no significant effect of treatment. \textcolor{red}{WHAT HAPPENS WITH MORE COVARIATES? E.G.: one significant, the other not}
+* (log rank-) score test: tests for significant differencies in the survival curves for the two   subpopulations seperated by the __categorical variable__ of interest (here: treatment). This means that the probability of an event occurring at any time point is the same for each subpopulation. H0: they do not differ -> p > 0.05: H0 cannot be rejected -> no significant effect of treatment. If there are more than 1 categorical variablewe have the H0: no effect of no covariate at all. Reject again if $p < \alpha$
+* ````surfdiff()``` for p = 2 > 1 variables: H0: no differencies across 4 resulting groups. If $p < \alpha:$ reject H0.  
+* Partial likelihood test: for __continuos__ variables!
+\textcolor{red}{WHAT HAPPENS WITH MORE COVARIATES? E.G.: one significant, the other not}
 
 Summary of the Cox-PH model:
 
@@ -423,10 +443,12 @@ Use case: test PH assumption for each covariate
 
 Idea: compute Schoenfeld residuals for Variable $k$ and $m$ observations. Those residuals should be independent of the survival time. This is the test that ```cox.zph()``` performs. 
 
+PH: effects of covariates are proportional and thus, time invariant. Thus, check for timely structure in residuals, if some timely structure _is left in the residuals_, the models assumption failed. 
+
 
 #### Test
 
-```{R, echo = FALSE}
+```{R, echo = FALSE, cache = TRUE}
 
 ### DATA 
 
@@ -510,7 +532,11 @@ ggplot(filter(schaledsch.m4, variable=="age"), aes(x=time, y=residual)) +
 
 PH assumption violated because there is non linear structure in the data. 
 
-What can we do? Exclude variable or model time varying effect // non-linearly e.g. using splines
+What can we do?  
+
+1. Exclude variable   
+1. __additionally__ model time varying effect as e.g. $x_{age}\cdot log(1+t)$  
+1. non-linearly e.g. using splines  
 
 Check variable ```employed lag1``` that had huge p-value in zph test (good sign for PH):
 
@@ -530,13 +556,25 @@ We see what we expected: there seems to be no PH violation. Sweet!
 
 Use case: Check overall goodness of fit
 
+#### Graphically 
+
+H0: Model works - Cox-snell residuals should follow an Exp(1) distribution. If the cox-snell-residuals distribution deviates strongly from the Exp(1), the model does not fit well. 
+
+#### Test
+
+```{R, echo = FALSE}
+
+```
+
+
+
 #### Model 
 
 #### Example
 
 Check the overall goodness of fit for a simple cox model: 
 
-```{R, echo  = FALSE}
+```{R, echo  = FALSE, cache = TRUE}
 data("tongue", package = "KMsurv")
 tongue <- tongue %>% mutate(type = as.factor(type))
 # or:
@@ -710,18 +748,6 @@ ped <- split_data(Surv(Survdays, PatientDied)~., data=patients, cut=1:30,
 # the hospitals -> only estimate scale parameter / variance
 # CHECK  s(CombinedicuID, bs="re"), where "re" means random effects
 
-
-# relative frequencies per interval
-# simply calculated, no model
-# rate generally small, no deaths at the beginning
-# ped = ped %>% 
-#   group_by(interval) %>%
-#   summarize(
-#     n.event = sum(ped_status),
-#     event.percent = round(mean(ped_status), 3)*100) # %>% print(n=26)
-
-# -> decreasing relative frequencies over time
-
 print(head(ped))
 
 ```
@@ -781,6 +807,36 @@ $$
 $$
 with additive effects of time-varying covariates on baseline hazard rate
 
+### Data
+
+### Data 
+
+looks like that
+
+```{r, echo = FALSE}
+load("data/liver81.RData")
+
+a = c("major_complications", "age", "charlson_score", "sex", "transfusion", 
+  "metastasesYN", "major_resection", "days", "status", "id", "metastases")
+
+colnames(liver) = a
+head(liver)
+```
+
+### Simple additive aalen model form lecture
+
+````{R, echo = FALSE, cache = TRUE}
+mod_aa <- aalen(
+  formula   = Surv(days, status) ~ age +  charlson_score + major_complications + metastases,
+  data      = liver, residuals = 1
+)
+summary(mod_aa)
+```
+
+* \textcolor{red}{DISCUSS interpretation for tests (supremum, Kolmogorov Smirnoff)}
+* huhuh
+
+
 # Cox-Aalen model
 
 ### model equation
@@ -821,7 +877,7 @@ head(liver)
 
 Effects for the continous variables estimated as additive via the Aalen-part of the model using the formula ```Surv(days, status) ~ age +  charlson_score + major_complications + metastases + prop(sex) + prop(transfusion) + prop(major_resection), data = liver, residuals = 1, basesim   = 1)```
 
-```{r, echo =FALSE}
+```{r, echo =FALSE, cache = TRUE}
 ## Cox-Aalen Model
 mod_ca <- cox.aalen(
   formula   = Surv(days, status) ~ age +  charlson_score + major_complications + metastases +
@@ -906,7 +962,7 @@ summary(mod_pam)
 
 This is the effect estimated for the smooth terms. The total effect of x at time point t is $\beta_x * x + f_x(t)$ where $\beta_x * x$ are the constant effects from the previous graphic and $f_x(t)$ models the effect of the smooth time varying term. Recap the PAM model equation $\lambda_i(t|x_i) = exp(f_0(t_j) + x^T\beta)$ and \textcolor{red}{DISCUSS}. They look like that:
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, cache = TRUE}
 ## Smooth effects
 pam_smooths <- tidy_smooth(mod_pam)
 ggplot(pam_smooths, aes(x=x, y = fit)) +
@@ -919,7 +975,7 @@ ggplot(pam_smooths, aes(x=x, y = fit)) +
 
 Visual comparison of the time-varying effects from Cox-Aalen model on the cumulated Hazard over time (black) vs. the smooth multiplivative effects of the PAM model (red).
 
-```{r, echo = FALSE} 
+```{r, echo = FALSE, cache=TRUE} 
 ## Visual comparison cumulative (time-varying) coefficients of Cox-Aalen model
 # COMPARE: cox.aalen vs. pam 
 # step functions in black: additive effects of aalen part of cox.aalen vs.
