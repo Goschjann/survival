@@ -128,6 +128,8 @@ survdiff(Surv(dauer, status) ~ female, data = soep)
 
 # Accelerated Failure Time Transformation models
 
+## General
+
 Assumptions: 
 1. covariates have a multiplicative effect on the __Survival time__. E.g.: Survival time for smokers is an accelerated version of the survival time for non-smokers.   
 2. the survival time follows an assumed distribution that we get applying a density transformation
@@ -151,14 +153,11 @@ Steps for the estimation:
 2. classic Maximum Likelihood Estimation
 
 
-
-## Examples for all AFT's 
-
 The exponential and the weibull AFT can be compared with a Cox PH model as they also have proportional (time independent) hazard ratios. This means that the following re-parametrization holds:
 $$
 \beta_{PH} = - \frac{\beta_{\text{AFT: WB or Exp}}}{\sigma}
 $$
-where $sigma$ is our scale parameter from the AFT model equation.   
+where $sigma$ is our scale parameter from the AFT model equation.  __This interpretation goes only from AFT to CoxPH, not in both directions!__. 
 
 Therefore we compare with this baseline Cox model:
 
@@ -169,7 +168,7 @@ summary(coxphFit)
 ```
 
 
-### Exponential
+## Exponential
 
 ```{R, echo = FALSE}
 ## Exponential model
@@ -178,7 +177,7 @@ survregExp <- survreg(Surv(futime, fustat) ~ ecog.ps + rx, ovarian,
 summary(survregExp)
 ```
 
-#### AFT interpretation:
+### AFT interpretation:
 
 * Geometric mean of survival time: 1055  
 * 1 unit change in ecog.ps shortens survival time by exp(-0.433) = 0.65  
@@ -189,7 +188,7 @@ summary(survregExp)
 exp(coef(survregExp))
 ```
 
-#### PH interpretation (invert the coefficients)
+### PH interpretation (invert the coefficients)
 * 1 unit change in ecog.ps increases the hazard h(t) by 1/exp(0.433) = 1.54  
 * 1 unit change in rx decreases h(t) by 0.56  
 
@@ -198,7 +197,20 @@ exp(-1 * coef(survregExp))
 ```
 
 
-### Weibull
+## Weibull
+
+$$
+T = exp(Y) = exp(X^T\beta)exp(\sigma \epsilon) \text{, with } \epsilon \sim SEV
+$$
+using the __density transformation rule__
+
+$$
+f_T(T) = f_\epsilon(g^{-1}(T))det|\frac{\partial g^{-1}(T)}{\partial T}|
+$$
+we can show that $T \sim Weibull(\alpha, \lambda)$ with $\alpha = \frac{1}{\sigma}$ and $\lambda = exp(-X^T\beta)$. Thus: 
+
+* $\lambda(t|X) = \frac{1}{\sigma}t^{\frac{1}{\sigma}-1}exp(X^T\beta)$  
+* $S(t|X) = exp(-exp(-X^T\beta)^\frac{1}{\sigma} t^\frac{1}{\sigma})$  
 
 
 ```{R, echo = FALSE}
@@ -208,7 +220,7 @@ survregWB <- survreg(Surv(futime, fustat) ~ ecog.ps + rx, ovarian,
 summary(survregWB)
 ```
 
-#### AFT interpretation:
+### AFT interpretation:
 
 * Geometric mean of survival time: 988 
 * 1 unit change in ecog.ps shortens survival time by exp(-0.385) = 0.68  
@@ -218,7 +230,7 @@ summary(survregWB)
 * coefficients: ```{R, echo = FALSE} exp(coef(survregWB)) ```
 
 
-#### PH interpretation (multiply by -1 and the shape parameter before exp())
+### PH interpretation (multiply by -1 and the shape parameter before exp())
 * 1 unit change in ecog.ps increases the hazard h(t) by 1.55 
 * 1 unit change in rx decreases h(t) by 0.55
 
@@ -227,13 +239,13 @@ shapeParameter <- 1 / survregWB$scale
 exp(-1 * shapeParameter * coef(survregWB))
 ```
 
-### Log Normal
+## Log Normal
 
 Only AFT Interpretation!
 
 * 1 unit incrase in ecog.ps shortens survival time by exp(-.229) = 0.79
 * 1 unit incrase in rx increases survival time by exp(0.813) = 2.25
-* Can we interpret the scale parameter?
+* Can we interpret the scale parameter? Yes, but how?
 * \textcolor{red}{MORE TO ADD! DISCUSS}
 
 ```{R, echo = FALSE}
@@ -242,7 +254,7 @@ survregLogNormal <- survreg(Surv(futime, fustat) ~ ecog.ps + rx, ovarian, dist =
 summary(survregLogNormal)
 ```
 
-### Log logistic
+## Log logistic
 
 
 ```{R, echo = FALSE}
@@ -251,50 +263,6 @@ survregLogLogistic <- survreg(Surv(futime, fustat) ~ ecog.ps + rx, ovarian, dist
 summary(survregLogLogistic)
 
 ```
-
-## Weibull Model
-
-### Model equation 
-
-model Survival time directly
-
-$$
-T = exp(Y) = exp(\beta_0) * exp(X^T\beta) * exp(\sigma \epsilon)
-$$
-$$
-\text{with } \epsilon \sim \text{Distribution e.g.: SEV, Normal, logistic, .....}  
-$$
-Then use density-transformation to get distribution for T (Survival time). 
-
-Steps:
-1. calculate density for T 
-2. classic Maximum Likelihood Estimation
-
-### Data 
-
-where delta depicts the event indicator (delta = 1: non-censored, delta = 0: censored)
-
-```{r, echo = FALSE}
-
-## Read in data
-data("tongue", package = "KMsurv")
-tongue <- tongue %>% mutate(type = as.factor(type))
-head(tongue)
-```
-
-### Model
-
-```{R, echo = FALSE}
-## AFT: Weibull model
-weibull.tongue <- survreg(Surv(time, delta) ~ as.factor(type), dist = "weibull",data = tongue)
-summary(weibull.tongue)
-```
-
-* Survival time decreases by factor exp(-0.669) = 0.512 for patient with type 2 w.r.t. type 1 given constant other features 
-* Not siginificant with $p = 0.056$
-* Failure time accelerates by factor 1 / 0.512 = 1.953125 \textcolor{red}{DISCUSS}
-* Scale Parameter = 1.24 -> if it was 1.0 we would yield an exponential distributed model. This would yield $\lambda{t} = \lambda$, constant and independent of time. 
-* Weibull model: not constant $\lambda(t) = \lambda * \alpha (\lambda*t)^{\alpha - 1}$ but hazard ratio still independent of time -> PH assumption
 
 # Cox Regression model
 
@@ -426,8 +394,6 @@ pec_obj2 <- pec::pec(mod_list, Surv(time,status==1)~year + ulcer,
   splitMethod = "cv10", B = 20, ipcw.refit = TRUE, exact = FALSE)
 plot(pec_obj2)
 ```
-
-
 
 
 ## Residuals
@@ -618,7 +584,78 @@ Two options:
 1. Plot cs-residuals against estimated distribution Function values. Their distribution should then follow a standard exponential distribution if the model is fit correctly.
 2. Plot against estimted cumulative hazard function. This should result in a straight line if the model fits the data. 
 
+## (Partial) Log Likelihood Ratio Test
+
+Idea: Test reduced model $\beta_0$ against full model $\beta$ and check, which fits better. 
+
+Formally: $H0: C\beta = d$ and $H1: C\beta \neq d$.
+
+In standard R output: reduced model is model with all $\beta_0^T = 0^T$ and the full model is the fitted model. Formally this means $H0: C\beta = 0$ and $H1: C\beta \neq 0$.
+
+Test statistics:
+$$
+lq = 2 (logPL(\hat\beta) - logPL_{H0}(\hat\beta)) \sim \chi^2_{df}
+$$
+H0: all coefficients are insignificant.
+
+* $lq > \chi_{df}^2 (1-\alpha) \rightarrow$ reject H0   
+* $p < \alpha \rightarrow$ reject H0 aka __$\hat\beta$ is not insignificant__.  
+
+Example:
+
+```{R, echo = FALSE}
+## Cox-PH model
+cox.tongue <- coxph(Surv(time, delta) ~ type, data = tongue)
+summary(cox.tongue)
+```
+
+The p-value of the Likelihood ratio test is $0.102 > \alpha = 0.05$: we cannot reject the H0 that the coefficient vector $\beta$ (here with only one coefficient for ```type2```) is equal to 0. This goes in line with the p-value for this coefficient. We have 1df as there is only one coefficient to be tested. Works the same way with additional coefficients. 
+
+## (Log rank) Score test 
+
+Idea: Tests for significant differencies in the survival curves for the two subpopulations seperated by the __categorical variable__ of interest (above: type2). This means that the probability of an event occurring at any time point is the same for each subpopulation. 
+
+* H0: they do not differ
+* p > 0.05: H0 cannot be rejected -> no significant effect of type2. 
+* If there are more than 1 categorical variable we yield the H0: no effect of no covariate at all. Reject H0 again in favor of significant effects if $p < \alpha$.
+
 # Semi-parametric additive Cox model
+
+## Data
+
+We convert 
+
+```{R, echo = FALSE}
+prison.short = read.csv(file = "data/prisonshort.csv", header = TRUE)
+head(prison.short, 4)
+```
+
+to long format
+
+```{R, echo = FALSE}
+prison.long = read.csv(file = "data/prisonlong.csv", header = TRUE)
+head(prison.long, 4)
+```
+
+We yield the same Coefficients for both data sets if we include only the time-constant predictors:
+
+```{R, echo = FALSE}
+(m1 <- coxph(Surv(week, arrest) ~ fin + age + mar + prio, 
+  method = "efron", data = prison.short))
+
+(m2 <- coxph(Surv(start, stop, arrest) ~ fin + age + mar + prio,
+  data = prison.long))
+
+```
+
+
+Now we include the time-varying employment variable:
+
+```{R, echo = FALSE}
+(m3 <- coxph(Surv(start, stop, arrest) ~ fin + age + prio + mar + employed,
+  data = prison.long))
+
+```
 
 # Time discrete Survival models
 
