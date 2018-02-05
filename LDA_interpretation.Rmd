@@ -25,7 +25,7 @@ Summary of models and especially their interpretation (graphically as well as co
 
 
 ```{r, echo=FALSE, warnings = FALSE, message = FALSE}
-setwd("/Users/Jann/Desktop/Repos/survival")
+setwd("C:/Users/Martin/Documents/survival-master")
 
 library(ggplot2)
 theme_set(theme_bw())
@@ -571,7 +571,7 @@ data("Melanoma", package="MASS")
 cox_ulcer <- coxph(Surv(time, status ==1) ~ ulcer, data = Melanoma)
 ## Estimate CV PEC for even grid of time points between 0 and 4000
 pec_obj <- pec::pec(list(cox_ulcer = cox_ulcer),
-  formula = Surv(time, status == 1) ~ year + ulcer, 
+  formula = Surv(time, status == 1) ~ year + ulcer, 
   data = Melanoma, exact = FALSE, 
   times = seq(0, 4000, by = 200),
   splitMethod = "cv10", B = 20, 
@@ -594,7 +594,7 @@ plot(pec_obj2)
 * Deviance
 * Cox-Snell
 
-### Schoenfeld Residuals
+### Schoenfeld Residuals $s_{i,j}$
 
 Use case: test PH assumption for each covariate
 
@@ -709,7 +709,23 @@ ggplot(filter(schaledsch.m4, variable=="employed.lag1"), aes(x=time, y=residual)
 
 We see what we expected: there seems to be no PH violation. Sweet!
 
-### Cox Snell residuals
+###Martingale residuals $m_i$
+$m_i=\delta_i-r_i$
+Use case: determine the functional form to be used for a given covariate.
+
+Measure of the difference between expected and observed events. Takes values between $-\infty$ and +1.
+$\sum^n_{i=1}m_i=0$
+plot residuals against a single covariate. A smoothed fit is used. If the plot is linear no transformation of the covariate is needed. If there is a threshold, a discretization may be in order.
+
+###Deviance residuals $d_i$
+Use case: Check for outliers. Assess the effect of a given individual on the model. 
+
+Idea: One could use martingale residuals , but they are highly skewed. The logarithm inflates values of the martingale residual close to 1 and shrinks large negative values. This leads to a more normally shaped distribution. 
+
+Plot $d_i$ versus the risk scores $x'\beta$
+(it's from the book page 381. the slides say something different, but it doesn't make a lot of sense imo...)
+
+### Cox Snell residuals $r_i$
 
 Use case: Check overall goodness of fit
 
