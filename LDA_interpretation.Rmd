@@ -1,22 +1,27 @@
 ---
-title: "LDA Interpretation"
+title: "Survival Data Analysis"
 author: "Jann Goschenhofer"
 date: "January 2018"
 output:
   pdf_document:
     toc: yes
+    number_sections: true
   html_document:
     toc: yes
     toc-depth: 3
+    number_sections: true
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+\newpage
+
 # Introduction
 
 Summary of models and especially their interpretation (graphically as well as content based) used in Survival Analysis. This document emerged throughout the exam preparation for a lecture on Survival Data Analysis at LMU in winter 2018. Most examples are based on that lecture taught by Prof. Kuechenhoff and Andreas Bender. 
+
 
 
 ```{r, echo=FALSE, warnings = FALSE, message = FALSE}
@@ -38,8 +43,194 @@ library(timereg)
 library(ldatools)
 # devtools::install_github("adibender/pammtools")
 library(pammtools)
-
+library("mgcv")
 ```
+
+# Big Picture
+
+## Estimation of $S(t)$ and $\lambda(t)$ __without__ Covariate Effects
+
+### Non Parametric
+
+* Kaplan-Meier for $S(t)$  
+* Nelson-Aalen for $\Lambda(t)$  
+* Breslow for $S(t)$  
+* Life-table for $\lambda(t)$  
+* Ramlau-Hansen for $\lambda(t)$  
+
+### Parametric
+
+* Assume $T_1, ..., T_n \sim \text{Distribution}(\theta)$ and estimate $\hat \theta = argmin_{\theta}l(\theta)$
+* __BUT__ Censoring
+* Random Censoring: $L(\theta) = \prod_{i=1}^n \lambda(t_i)^{\delta_i}S(t_i)$
+
+## Regression models __with__ Covariate Effects
+
+### Transformation Models
+
+* model $S(t)$ directly 
+* $log(T) = Y = X^T\beta + \sigma \epsilon$
+* Assume $\epsilon \sim \text{Distribution}(\theta)$
+* Density Transformation: get $F_T(T), f_T(T)$
+
+### Semi-Parametric Cox Model
+
+* PH-Assumption: $\frac{\lambda(t|X_1)}{\lambda(t|X_1)}t$
+* model $\lambda(t)$ directly
+* $\lambda(t|X) = \lambda_0(t)exp(X^T\beta)$
+* __parametric__ Partial Likelihood Estimation: $PL(\beta) = \prod_{i = 1}^m \frac{exp(x_i^T\beta)}{\sum_{j \in R(t_i)}exp(x_i^T\beta)}$
+* __non-parametric__ $\lambda_0(t)$ via Breslow
+* __BUT1__ effect of $\beta_j$ assumed to be linear, often is not 
+* __BUT2__ time varying covariates and effects
+* __BUT3__ time constant baseline hazards
+
+#### Semi-parametric Additive Cox Model (__BUT1:__)
+
+* $\lambda_(t|X) = \lambda_0(t)exp(f_1(x_1)\beta_1 + ... + f_k(x_k) \beta_k + x_{k+1}\beta_{k+1} + ... + x_{p}\beta_{p})$
+* Estimate $f_j(x_j)$ via splines for smooth nonlinear effects 
+
+#### Time Varying Covariates and Effects (__BUT2:__)
+
+##### Categorical Covariates
+
+Transform short
+
+i       week      arrested     married  emp1  emp2  emp3
+------- --------- ------------ -------  ----  ----  ----
+1        2        1             0       1     0     NA
+2        3        0             1       1     1     1
+
+to long format:
+
+i       week      arrested     married  emp
+------- --------- ---------    -------  ----
+1       1         0             0       1   
+1       2         1             0       0
+2       1         0             1       1
+2       2         0             1       1
+2       3         0             1       1
+
+and fit classic Cox-PH. Equivalent coefficients for both formats __without__ covariates because only events in Partial Likelihood.
+
+##### Continous Variables
+
+* Create artificial time-dependent variable $\tilde x$ and __add__ to classic Cox model  
+* e.g.: age and t:age  
+
+##### Effects ?
+
+## Extensions of Cox model
+
+Discretisize time in intervals $[a_o, a_1[, ..., [a_{q-1}, a_q[$
+
+
+    
+### Time Discret Survival Models via GLM's
+    
+  * Transform data in long format with q time-factors
+  * fit GLM (logistic, cloglog, probit) __wihtout intercept__ on event variable as response
+  * q coefficients $\beta_{0k}$ for each time interval as some kind of baseline hazard
+  * __NICE:__ GLM Toolbox
+  * __BUT3:__ No hazard/ Survival interpretation, only Odds etc. 
+  
+### Piecewise Exponential Models (__BUT3__)
+  
+* Cox-Model with time varying baseline hazards $\lambda_j$ for $j = 1, ..., q$
+* Transform short
+  
+  
+i       $t_i$     $\delta_i$   $x_{i1}$ $x_{i2}$
+------- --------- ---------    -------  ----
+1       0.25      1             0       3 
+2       0.13      0             1       5
+  
+  
+to long formatted __pseudo-data__ :
+    
+i       $y$       a        $log(\Delta)$ $x_1$  $x_2$
+------- --------- ------   -------      ----    ---
+1       0         0.1       log(0.1)    0       3    
+1       0         0.2       log(0.1)    0       3    
+1       1         0.3       log(0.0.5)  0       3    
+2       0         0.1       log(0.1)    1       5    
+2       0         0.2       log(0.03)   1       5    
+
+* __BUT4:__ exploiding parameters for small intervalls and large $q$
+* use __Piecewise Exponential Additive Model__
+* __BUT5:__ random effects in the data
+* use __Piecewise Exponential Additive Mixed Model__ with Frailty term
+* __BUT6:__ only multiplicative effects of the coefficients
+
+## Additive Hazard Regression Models (__BUT6__)
+
+### Aalen Model
+
+* __NICE:__ additive effects
+* __NICE:__ new interpretation graphically
+* Idea: model effects of covariates on baseline hazard rate $\lambda_0$ __additively__
+* Formula: $\lambda(t|X) = \lambda_0(t) + \sum_{k = 1}^p x_k(t)\beta_k(t) = \lambda_0(t) + x^T(t)\beta(t)$
+
+
+### Cox-Aalen Model
+
+* combine best from both worlds: __additive__ effects on $\lambda_0(t)$ that can be influenced by __multiplicative__ coefficients
+* $\lambda(t|X) = \lambda_0(t) + X(t)\beta(t)exp(Z^T(t)\gamma)$
+* $\beta(t):$ time varying additive coefficients
+* $\gamma:$ time constant multiplicative coefficients. Interpretation: multiplicative effect on hazard if rest kept constant. 
+* __BUT7:__ still assumption that $T_i \perp C_i$ 
+
+### Competing Risk Model (But7)
+
+* More than one possible event (e.g.: two types of death) next to censoring of which only one can occur. The events __compete__ with each other as only one of them can occur. 
+* Approaches:
+  * Seperate "cause-specific" Cox models for each type where the competing events are subsumed in censoring. 
+    * Problem 1: assumption, that $T_1 \perp T_2$
+    * Problem 2: Kaplan-Meier Curves are biased
+  * Cumulative Incidence Curve as solution to problem 2
+  * Discretization: Multinomial GLMs
+
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Censoring
 
@@ -621,7 +812,15 @@ Idea: Tests for significant differencies in the survival curves for the two subp
 
 # Semi-parametric additive Cox model
 
-## Data
+* $\lambda_(t|X) = \lambda_0(t)exp(f_1(x_1)\beta_1 + ... + f_k(x_k) \beta_k + x_{k+1}\beta_{k+1} + ... + x_{p}\beta_{p})$
+* Estimate $f_j(x_j)$ via splines for smooth nonlinear effects 
+* Example: age has non-linear effect, smooth age variable via Splines
+
+# Cox model: time varying covariates
+
+## Continous covariates
+
+## Categorical covariates
 
 We convert 
 
@@ -648,7 +847,6 @@ We yield the same Coefficients for both data sets if we include only the time-co
 
 ```
 
-
 Now we include the time-varying employment variable:
 
 ```{R, echo = FALSE}
@@ -657,14 +855,80 @@ Now we include the time-varying employment variable:
 
 ```
 
+
 # Time discrete Survival models
+
+Discretize time in intervals $[a_0, a_1[, ..., [a_{q-1}, a_q[$ and fit classic GLM's __without__ an intercept on the transformed data with the event variable as response. The coefficients of the time variables are used as intercepts.
+
+## Data
+
+We add the time variable ```t``` as a factor to our data frame
+
+```{R, echo = FALSE}
+# create factor variable of time, that is needed to fit time-discrete models
+prison.long$t <- as.factor(prison.long$stop)
+head(prison.long)
+
+```
+
+## Model
+
+Fit a logit-model on the data with ```t``` as input. The hazard in the logit model follows:
+<!--
+$$
+\lambda ( t|X_{it} ) = P( y_{it} = 1 | X_{it})  = \frac{ exp(\beta_{0t} + X_{it}^T\beta)}{1 + exp(\beta_{0t} + X^T_{it}\beta)}
+$$
+-->
+and thus the baseline hazard (all other coavariates than the time dummy-variable of interest):
+
+<!--
+$$
+\lambda_0 (t| X_{it} ) = P( y_{it} = 1 | X_{it} = 0) = \frac{ exp(\beta_{0t}) }{1 + exp(\beta_{0t} ) }
+$$
+-->
+Thus, we yield 52 time coeffients next to the other coefficients:
+
+```{R, echo = FALSE}
+# fit time-discrete model with logit link function
+# interpretation of coefficients as Odds-Ratios possible
+m.logit <- glm(arrest ~ -1 + t + fin + age + mar + prio,
+  family = binomial(link = "logit"), data = prison.long)
+summary(m.logit)
+```
+
+## Smooth time variables
+
+We include the time variable via a smoothing spline and yield a sparser model with more or less the same coefficients for our covariates:
+
+```{R, echo = FALSE}
+m.smooth.logit <- gam(arrest ~ s(stop) + fin + age + mar + prio,
+  family = binomial(link = "logit"), data = prison.long)
+summary(m.smooth.logit)
+```
+
+We cannot interpret those baseline hazards in a reasonable manner. 
+
+Graphically, we see that the baseline hazards from the blue, spline curve is much smoother and less "outlier-sensitive" (e.g.: time points without events), than from the simple logit model in red:
+
+```{R, echo = FALSE}
+
+zero.data <- data.frame(stop = 1:52, fin = 0, age = 0, mar = 0, prio = 0)
+smooth.basehaz <- predict.gam(object = m.smooth.logit, newdata = zero.data,
+  type = "response")
+
+plot(1:52, exp(m.logit$coefficients[1:52])/(1+exp(m.logit$coefficients[1:52])), 
+  type = "l", lty = 1, col = "red", lwd = 2, ylab = "baseline coefficients", xlab = "time as factor")
+lines(1:52, smooth.basehaz, type = "l", lty = 1, col = "blue", lwd = 4)
+
+```
+
 
 # Piecewise exponential models (PEM)
 
 ### Model equation:
 
 $$
-\lambda_i(t|x_i) = \lambda_jexp(x^T\beta), \forall t \in ]a_{j-1}, a_j]
+\lambda_i(t|x_i) = \lambda_j exp(x^T\beta), \forall t \in ]a_{j-1}, a_j]
 $$
 
 with constant baseline hazards in each of the $J$ intervals.
@@ -1052,6 +1316,85 @@ lines(mcy_df$tend, mcy_df$cumu_hazard - mcn_df$cumu_hazard, col = 2, lwd = 2)
 
 
 # Competing Risk models
+
+* More than one possible event (e.g.: two types of death) next to censoring of which only one can occur. The events __compete__ with each other as only one of them can occur. 
+* Problem with Survival rate estimates (such as KM):
+  * Soldiers can die in combat or by accident
+  * All 100 soldiers die in helicopter accident at time t __before__ they could take part in combat
+  * Nobody died in combat at t $\rightarrow S_{Combat}(t) = P(T_{Combat} > t) = 1$ though no combat took place
+  * for Kaplan Meier: P(T_{Combat} = t) undefined because nobody at risk at time t.
+  * $\Rightarrow$ difficult interpretation of Survival Curves in competing risk scenario
+* Approaches:
+  * Seperate "cause-specific" Cox models for each type where the competing events are subsumed in censoring. 
+    * Problem 1: assumption, that $T_1 \perp T_2$
+    * Problem 2: Kaplan-Meier Curves are biased
+  * Cumulative Incidence Curve as solution to problem 2
+  * Discretization: Multinomial GLMs
+  
+## Cause-specific Cox PH Models
+
+* One Cox model for each cause. 
+* Interpretation based on non-occurence of competing events
+* Estimate via Partial Likelihood
+* Treat competing events $-j$ as being censored which is again the unrealistic independence assumption 
+
+$$
+\lambda_j(t) = \lambda_{0j}(t)exp(X^T\beta_j) \text{ with possibly cause-specific coefficients } \beta_{j}  
+$$
+  
+## Cumulative Incidence Curves
+
+### Problem
+
+Study with 100 people over 5 months. Two possible deats: Virus or Cancer. 99 patients die t = 3 on V, 1 dies at t = 5 on C. What is survival rate at t=5 $S(t = 5)$? Depending on the interpretation of V:    
+
+1. they represent the C-subpopulation and would have died on Cancer also: $S(t = 5)$ = (1-1)/1 = 0? Thus $Risk_{C1}(T = 5) = 1$ which is the classic Kaplan-Meier way
+2. they would have survived Cancer: $S(t = 5) = 1-0.01 = 0.99$. Thus $Risk_{C2}(T = 5) = 0.01$ also termed  __marginal probability__ as V-patients are understood as Cancer-Survivors
+
+We would like to know, who of the V-deaths would have died on Cancer in case they survived V. Which of both Risks is more informative?
+
+### Howto CIC
+
+1. Estimate hazard at ordered failure times $t_f$ for event-type $j$ of interest:
+$$
+\hat \lambda(t_f)) = \frac{m_{jf}}{n_f} = \frac{\text{\# events j at $t_f$}}{\text{\# subjects at risk at $st_f$}} 
+$$
+2. Estimate __overall Survival Probability for all event-types__ $\hat S(t_{f-1})$
+3. Compute estimated incidence of failing at time $t_f$ from event type c:
+$$
+\hat I_{jf} = \hat S(t_{f-1}) \times \hat \lambda_j(t_f) 
+$$
+4. Cumulate:
+
+<!--
+$$
+\text{CIC}_j(t_f) = P(T <= f | C = j) = \sum_{l = 1}^f \hat S(t_{l}) \times \hat \lambda_j(t_l) \text{ Aalen-Johannsen Estimator of cumulative incidence}
+$$
+-->
+
+Latex does not work for some reason
+
+Kaplan Meier would use event dependent $\hat S_c(t_{l-1})$ instead of overall $\hat S(t_{l-1})$
+
+
+
+## Multinomial time-discret models
+
+Discretize time in q intervals $[a_0, a_1[, ..., [a_{q-1}, a_q[$
+
+
+$$
+\lambda_j(t|X) = P(T = t, C = j, T \geq t, X) = \frac{exp(\beta_{0tj} + X^T\beta_j)}{1 + \sum_{i = 1}^k exp(\beta_{0ti} + X^T\beta_i)} \text{ with \# different events = k + 1}
+$$
+$$
+\lambda_0(t|X) = P(T > t, C = j, T\geq t, X) = \frac{1}{1 + \sum_{i = 1}^k exp(\beta_{0ti} + X^T\beta_i)}
+$$
+Interpretation by cause specific log odds w.r.t. reference event type:
+
+$$
+log \frac{\lambda_j(t|X)}{\lambda_0(t|X)} = \beta_{0tj} + X^T\beta_{j} 
+$$
+and $exp(\beta_lj)$ = the effect of covariate $x_l$ on cause specific hazard w.r.t nothing else happens
 
 # Random Stuff
 
