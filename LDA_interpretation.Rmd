@@ -191,48 +191,11 @@ i       $y$       a        $log(\Delta)$ $x_1$  $x_2$
   * Discretization: Multinomial GLMs
 
 
+
+
+
+
 \newpage
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # Censoring
 
 1. __Right__:  
@@ -243,9 +206,19 @@ i       $y$       a        $log(\Delta)$ $x_1$  $x_2$
 3. __Left Truncation__: Biased because only people that survived made it to the study. E.g.: deductible in insurances, people with losses < deductibles are not getting observed. 
 
 
+
+
+
+
+
+
+
+
+
+
+
+\newpage
 # Kaplan Meier
-
-
 
 ### Model Equation
 
@@ -318,6 +291,15 @@ survdiff(Surv(dauer, status) ~ female, data = soep)
 
 # Nelson Aalen
 
+
+
+
+
+
+
+
+
+\newpage
 # Accelerated Failure Time Transformation models
 
 ## General
@@ -456,6 +438,20 @@ summary(survregLogLogistic)
 
 ```
 
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
 # Cox Regression model
 
 Estimates coefficents $\beta$ that have multiplicative effect on time-dependent hazard $\lambda_0(t)$. The baseline hazard is estimated non-parametrically via Breslow estimate. Thus, we yield step-functions for visualization, estimation, ...
@@ -557,6 +553,153 @@ ggplot(cox.res.surv, aes(x=cs.residual, y=Lambda)) +
 
 ```
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+# Semi-parametric additive Cox model
+
+* $\lambda_(t|X) = \lambda_0(t)exp(f_1(x_1)\beta_1 + ... + f_k(x_k) \beta_k + x_{k+1}\beta_{k+1} + ... + x_{p}\beta_{p})$
+* Estimate $f_j(x_j)$ via splines for smooth nonlinear effects 
+* Example: age has non-linear effect, smooth age variable via Splines
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+# Cox model: time varying covariates
+
+Effect remains constant, but covariate varies over time: $\beta x(t)$. For instance, the effect of being employed or unemployed stays constant over time, but the employment status of the people varies over time. 
+
+We convert 
+
+```{R, echo = FALSE}
+prison.short = read.csv(file = "data/prisonshort.csv", header = TRUE)
+head(prison.short, 4)
+```
+
+to long format
+
+```{R, echo = FALSE}
+prison.long = read.csv(file = "data/prisonlong.csv", header = TRUE)
+head(prison.long, 4)
+```
+
+We yield the same Coefficients for both data sets if we include only the time-constant predictors:
+
+```{R, echo = FALSE}
+(m1 <- coxph(Surv(week, arrest) ~ fin + age + mar + prio, 
+  method = "efron", data = prison.short))
+
+(m2 <- coxph(Surv(start, stop, arrest) ~ fin + age + mar + prio,
+  data = prison.long))
+
+```
+
+Now we include the time-varying employment variable and yield a constant effect coefficient for the time varying variable.
+```{R, echo = FALSE}
+(m3 <- coxph(Surv(start, stop, arrest) ~ fin + age + prio + mar + employed,
+  data = prison.long))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+# Cox model: time varying effects
+
+## Idea
+
+Covariate remains constant but the effect changes over time: $\beta(t)\times x$. The same value of $x$ has a different effect at $t_1$ than an $t_2$. Create a fake-time-varying variable, e.g. $log(t)$ and model the coefficients for the interaction of the real variable with the time-dummy. No clear interpretation as coefficients are bound to time-fake-dummy but plot of the effect over time possible.
+
+## Example
+
+Old model with wrong intake of age variable, detected by the schoenfeld test. We assume age to have a time-varying effect on the hazard.
+
+```{R, echo = FALSE}
+prisss = prison.long %>%
+  mutate(employed.lag1 = lag(employed, default = 0))
+
+
+m4 <- coxph(Surv(start, stop, arrest) ~ fin + age + prio + mar + employed.lag1, data = prisss)
+summary(m4)
+cox.zph(m4)
+plot(cox.zph(m4)[2])
+```
+
+Model age explicitly via an interaction term with time such that $x_{age2} = x_{age}log(t)$. This yields perfect Schoenfeld-plots and an increase in the global p-values of the zph test:
+
+```{R, echo = FALSE}
+m5 = coxph(Surv(start, stop, arrest) ~ fin + age + age:I(log(stop))+ prio + mar + employed.lag1, data = prisss)
+
+summary(m5)
+cox.zph(m5, transform = "identity")
+plot(cox.zph(m5)[2])
+plot(cox.zph(m5)[6])
+```
+
+We can also test the __PH Assumption__ for a variable this way: if the time varying effect is not significant, the PH is valid. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage 
+
 # Model fit Analysis
 
 ## Prediction Error Curves (PEC)
@@ -590,11 +733,6 @@ plot(pec_obj2)
 
 ## Residuals
 
-* Schoenfeld 
-* Martingale
-* Deviance
-* Cox-Snell
-
 ### Schoenfeld Residuals $s_{i,j}$
 
 Use case: test PH assumption for each covariate
@@ -603,62 +741,22 @@ Idea: compute Schoenfeld residuals for Variable $k$ and $m$ observations. Those 
 
 PH: effects of covariates are proportional and thus, time invariant. Thus, check for timely structure in residuals, if some timely structure _is left in the residuals_, the models assumption failed. 
 
+H0: Corr(Schoenfeld-Residuals, Ranking of event times) = 0. If p < 0.05, reject that H0 and the corresponding feature violates the PH assumption as there is still timely structure left in the residuals. 
+
 
 #### Test
 
 ```{R, echo = FALSE, cache = TRUE}
 
 ### DATA 
+prison.short = read.csv(file = "data/prisonshort.csv", header = TRUE)
 
-prison = read.table("http://socserv.mcmaster.ca/jfox/Books/Companion/data/Rossi.txt")%>%
-  mutate(subject=row_number())
-
-# transform data to binary
-
-for (column in colnames(prison)) {
-  if (is.factor(prison[, column])) {
-    
-    levels(prison[, column]) = c(levels(prison[, column]), 1, 0)
-    
-    # for employment data
-    prison[, column] = replace(prison[, column], prison[, column] == "yes", 1)
-    prison[, column] = replace(prison[, column], prison[, column] == "no", 0)
-
-    # race
-    prison[, column] = replace(prison[, column], prison[, column] == "black", 1)
-    prison[, column] = replace(prison[, column], prison[, column] == "other", 0)
-
-    # mar
-    prison[, column] = replace(prison[, column], prison[, column] == "married", 1)
-    prison[, column] = replace(prison[, column], prison[, column] == "not married", 0)
-    
-    # delete empty levels 
-    # prison[, column] = as.factor(as.character(prison[, column]))
-    # try numeric values, YES this is it
-    prison[, column] = as.integer(as.character(prison[, column]))
-  }
-}
-
-## transform to long format to accommodate time-varying covariates
-prison.long <- prison %>%
-  gather(calendar.week, employed, emp1:emp52) %>%
-  filter(!is.na(employed)) %>% # employed unequal to NA only for intervals under risk
-  group_by(subject) %>%
-  mutate(
-    start = row_number()-1L,
-    stop = row_number(),
-    arrest = ifelse(stop==last(stop) & arrest==1, 1, 0),
-    calendar.week = as.integer(sub("emp", "", calendar.week))) %>%
-  select(subject, calendar.week, start, stop, arrest, employed, fin:educ) %>%
-  arrange(subject, start, stop) %>%
-  ungroup()
-
-prison.long %<>% mutate(employed.lag1 = lag(employed, default=1))
+prison.long = read.csv(file = "data/prisonlong.csv", header = TRUE)
 
 prisss = prison.long %>%
   mutate(employed.lag1 = lag(employed, default = 0))
 
-m4 <- coxph(Surv(start, stop, arrest) ~ fin + age + prio + mar + employed.lag1, data = prison.long)
+m4 <- coxph(Surv(start, stop, arrest) ~ fin + age + prio + mar + employed.lag1, data = prisss)
 
 zph.prison <- cox.zph(m4, transform="identity")
 zph.prison
@@ -710,7 +808,8 @@ ggplot(filter(schaledsch.m4, variable=="employed.lag1"), aes(x=time, y=residual)
 
 We see what we expected: there seems to be no PH violation. Sweet!
 
-###Martingale residuals $m_i$
+### Martingale residuals $m_i$
+
 $m_i=\delta_i-r_i$
 Use case: determine the functional form to be used for a given covariate.
 
@@ -718,7 +817,8 @@ Measure of the difference between expected and observed events. Takes values bet
 $\sum^n_{i=1}m_i=0$
 plot residuals against a single covariate. A smoothed fit is used. If the plot is linear no transformation of the covariate is needed. If there is a threshold, a discretization may be in order.
 
-###Deviance residuals $d_i$
+### Deviance residuals $d_i$
+
 Use case: Check for outliers. Assess the effect of a given individual on the model. 
 
 Idea: One could use martingale residuals , but they are highly skewed. The logarithm inflates values of the martingale residual close to 1 and shrinks large negative values. This leads to a more normally shaped distribution. 
@@ -827,52 +927,26 @@ Idea: Tests for significant differencies in the survival curves for the two subp
 * p > 0.05: H0 cannot be rejected -> no significant effect of type2. 
 * If there are more than 1 categorical variable we yield the H0: no effect of no covariate at all. Reject H0 again in favor of significant effects if $p < \alpha$.
 
-# Semi-parametric additive Cox model
-
-* $\lambda_(t|X) = \lambda_0(t)exp(f_1(x_1)\beta_1 + ... + f_k(x_k) \beta_k + x_{k+1}\beta_{k+1} + ... + x_{p}\beta_{p})$
-* Estimate $f_j(x_j)$ via splines for smooth nonlinear effects 
-* Example: age has non-linear effect, smooth age variable via Splines
-
-# Cox model: time varying covariates
-
-## Continous covariates
-
-## Categorical covariates
-
-We convert 
-
-```{R, echo = FALSE}
-prison.short = read.csv(file = "data/prisonshort.csv", header = TRUE)
-head(prison.short, 4)
-```
-
-to long format
-
-```{R, echo = FALSE}
-prison.long = read.csv(file = "data/prisonlong.csv", header = TRUE)
-head(prison.long, 4)
-```
-
-We yield the same Coefficients for both data sets if we include only the time-constant predictors:
-
-```{R, echo = FALSE}
-(m1 <- coxph(Surv(week, arrest) ~ fin + age + mar + prio, 
-  method = "efron", data = prison.short))
-
-(m2 <- coxph(Surv(start, stop, arrest) ~ fin + age + mar + prio,
-  data = prison.long))
-
-```
-
-Now we include the time-varying employment variable:
-
-```{R, echo = FALSE}
-(m3 <- coxph(Surv(start, stop, arrest) ~ fin + age + prio + mar + employed,
-  data = prison.long))
-
-```
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage 
 # Time discrete Survival models
 
 Discretize time in intervals $[a_0, a_1[, ..., [a_{q-1}, a_q[$ and fit classic GLM's __without__ an intercept on the transformed data with the event variable as response. The coefficients of the time variables are used as intercepts.
@@ -890,19 +964,21 @@ head(prison.long)
 
 ## Model
 
-Fit a logit-model on the data with ```t``` as input. The hazard in the logit model follows:
-$$
-\lambda (t| X_{it} ) = P( y_{it} = 1 | X_{it})  = \frac{ exp( \beta_{0t} + X_{it}^T \beta)}{1 + exp(\beta_{0t} + X_{it}^T \beta)}
-$$
-
-
-and thus the baseline hazard (all other covariates than the time dummy-variable of interest):
+### Logit 
 
 $$
-\lambda_0 (t; X_{it} = 0) = P( y_{it} = 1 ; X_{it} = 0) = \frac{ exp(\beta_{0t}) }{1 + exp(\beta_{0t} ) }
+P(T = t | T \geq t, x) = \frac{exp(\eta)}{1+exp(\eta)}
+$$
+$$
+P(T > t | T \geq t, x) = 1 - P(T = t | T \geq t, x) =  \frac{1}{1+exp(\eta)}
+$$
+$$
+\frac{P(T = t | T \geq t, x)}{P(T > t | T \geq t, x)} = exp(\eta) = exp(\beta_0 + X'\beta) = exp(\beta_0)exp(X'\beta) \textbf{ Continuation ratio}
 $$
 
-Thus, we yield 52 time coeffients next to the other coefficients:
+e.g. $beta_{female} = 0.5 \rightarrow$ Risk of woman to have event in time $T = t$ instead of later ih $T > t$ is factor $exp(0.5) = 1.68$ higher than for men ($x_{female} = 0$)
+
+#### Example
 
 ```{R, echo = FALSE}
 # fit time-discrete model with logit link function
@@ -911,6 +987,35 @@ m.logit <- glm(arrest ~ -1 + t + fin + age + mar + prio,
   family = binomial(link = "logit"), data = prison.long)
 summary(m.logit)
 ```
+
+The risk to go back to jail for a married person in $T=t$ instead of $T > t$ is $exp(-0.53) = 0.58$ lower than for a not-married person. We always __interpret the continutation ratio in the logit time discrete model__!
+
+The hazard in the logit model follows:
+$$
+\lambda (t| X_{it} ) = P( y_{it} = 1 | X_{it})  = \frac{ exp( \beta_{0t} + X_{it}^T \beta)}{1 + exp(\beta_{0t} + X_{it}^T \beta)}
+$$
+and thus the baseline hazard (all other covariates than the time dummy-variable of interest):
+
+$$
+\lambda_0 (t; X_{it} = 0) = P( y_{it} = 1 ; X_{it} = 0) = \frac{ exp(\beta_{0t}) }{1 + exp(\beta_{0t} ) }
+$$
+
+### Cloglog
+
+Interpetation with respect to the hazard rate. 
+
+
+```{R, echo = FALSE}
+# fit time-discrete model with logit link function
+# interpretation of coefficients as Odds-Ratios possible
+m.cloglog <- glm(arrest ~ -1 + t + fin + age + mar + prio,
+  family = binomial(link = "cloglog"), data = prison.long)
+summary(m.cloglog)
+```
+
+The hazard rate for a married person is $exp(-0.53) = 0.59 $ times as high as for a an unmarried person with all other covariates held constant. 
+
+
 
 ## Smooth time variables
 
@@ -939,6 +1044,19 @@ lines(1:52, smooth.basehaz, type = "l", lty = 1, col = "blue", lwd = 4)
 ```
 
 
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
 # Piecewise exponential models (PEM)
 
 ### Model equation:
@@ -950,7 +1068,6 @@ $$
 with constant baseline hazards in each of the $J$ intervals.
 
 ### Data
-
 
 ```{R, echo = FALSE}
 ## load Freireich data
@@ -970,18 +1087,34 @@ head(leuk.ped)
 
 ```
 
-We fit an intercept-only model for many intervals resulting in many baseline intercepts:
+We fit a model for many intervals and the treatment variable resulting in many baseline intercepts:
 
 ```{R, echo = FALSE}
-pem  <- glm(ped_status ~ interval-1, offset=offset, data=leuk.ped, family=poisson(link = log))
+pem  <- glm(ped_status ~ interval - 1 + treatment, offset=offset, data=leuk.ped, family=poisson(link = log))
 summary(pem)
-
 ```
 
 * we fit way too many parameters
 * intervals which did not face events have super high standard errors and strange coefficients
 * -> Two reasons for fitting PAM's with smooth baseline hazards
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
 # Piecewise additive exponential models (PAM)
 
 New compared to PEM: smooth modeling of the piecewise constant baseline hazards e.g. via splines. Cool because:  
@@ -999,7 +1132,7 @@ $$
 \text{with spline for time dependent baseline hazard: }\\
 $$
 $$
-f_0(t_j) = log(\lambda_0(t_j)) = \sum_{k = 1}^K \gamma_k B_k(t_j) \\
+f_0(t_j) = log(\lambda_0(t_j)) = \sum_{k = 1}^K \gamma_k B_k(t_j)
 $$
 $$
 \text{and for time varying covariates: } \\
@@ -1008,24 +1141,36 @@ $$
 \lambda_i(t|x_i) = exp(f_0(t_j) + \sum_{j = 1}^pf_k(x_i, k)) 
 $$
 
+## Model
+
+```{R, echo = FALSE}
+pam = gam(ped_status ~ s(tend) + treatment, offset = offset, data = leuk.ped, family = poisson(link = log))
+summary(pam)
+```
+
+we can also plot the splined piecewise smoothed hazards:
+
+```{R, echo = FALSE}
+gg_smooth(x = leuk.ped, fit = pam, terms = c("tend"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
 # Piecewise additive exponential mixed models (PAMM)
 
-### Model equation: 
-$$
-\lambda_i(t|x_i) = exp(f_0(t_j) + x^T\beta) \\
-$$
-$$
-\text{with spline for time dependent baseline hazard: }\\
-$$
-$$
-f_0(t_j) = log(\lambda_0(t_j)) = \sum_{k = 1}^K \gamma_k B_k(t_j) \\
-$$
-$$
-\text{and for time varying covariates: } \\
-$$
-$$
-\lambda_i(t|x_i) = exp(f_0(t_j) + \sum_{j = 1}^pf_k(x_i, k)) 
-$$
+Extension of the PAM with __Frailty terms__. Here: 400 different ICU's and we do not want to control for each of it. Therefore, we fit a smooth, splined version of the frailty. Nice: need only to fit a distribution with shape parameter
 
 ### Data
 
@@ -1077,7 +1222,7 @@ pamm_icu <- bam(ped_status ~ s(tend) + Year + AdmCatID + DiagID2 + s(Age) + s(BM
     family=poisson(), discrete = TRUE)
 ```
 
-We include the variable CombinedicuID as a random effect aka as a __frailty term__. Therefore wie use ```bs = "re"```. We control for the random effects of the ICU units without having to model a dummy for each of the ICU's. The frailty model just estimates a Gaussian over the different ICU's for which we only have to estimate the variance: 1 parameter vs. 400.
+We include the variable CombinedicuID as a random effect aka as a __frailty term__. Therefore wie use ```bs = "re"```. We control for the random effects of the ICU units without having to model a dummy for each of the ICU's. The frailty model just estimates a Gaussian over the different ICU's for which we only have to estimate the variance: 1 parameter instead of 400.
 
 We model the PAM as a Poisson model with log link on the death-indicator ```ped_status```
 
@@ -1088,19 +1233,21 @@ summary(pamm_icu)
 
 ### What can we say?
 
-* smooth terms for continuos variables:  
+* __smooth terms for continous variables:__  
   * if the edf (estimated degress of freedom) = 1, our spline smoother estimated the variable as a linear effect on the hazard rate. This is the case for Age and time  
   * BMI, ApacheIIScore and CombinedicuID (only frailty effect) seem to have a non-linear effect on the hazard rate  
-  * \textcolor{red}{HOW TO INTERPRET SPLINE FOR COMBINEDICUID FRAILTY @ ANDREAS}
-  * those effects can also be seen graphically which shows the effect of the variable's values on the   \textcolor{red}{linear predictor aka the log(hazard-rate)}. This is the exact value that enters our linear predictor, e.g. 75 year old person enters 0.3
-  * time (tend) has a falling slope aka a decreasing effect on the log(hazard) -> has hazard decreases also   
+  * We can and will not interpret the frailty term in detail
+  * those effects can also be seen graphically which shows the effect of the variable's values on the \textcolor{red}{linear predictor aka the log(hazard-rate)}. This is the exact value that enters our linear predictor, e.g. 75 year old person enters 0.3
+  * time (tend) has a falling slope aka a decreasing effect on the log(hazard) -> hazard decreases also   
   * ApacheIIScore has almost linear effect: (log-) hazard increases with increasing Apache Scores though this increase is getting lower with higher values of the score  
   * increasing linear age effect, the older, the higher the (log-)hazard  
   * typical shape of the BMI effect, very low BMIs have increased hazard, that decreases toward "normal" BMIs, high uncertainty with respect to effect of very high BMIs as number of patients with respective BMIs decreases (few persons with very high obesity)  
+  
 ```{r, echo = FALSE}
 gg_smooth(x = ped, fit = pamm_icu, terms = c("tend", "Age", "BMI", "ApacheIIScore"))
 ```
-* non-smooth terms for categorical variables:
+
+* __non-smooth terms for categorical variables:__
   * exponentiate the coefficients ```exp(beta)``` and interpret their __mulitplicative__ effect on the hazard rate w.r.t the reference category  
   * example 1: hazard rate for a person treated in 2009 is exp(-0.08622441) = 0.9173883 times as high as the hazard rate for similar person treated in 2007 (reference category)  
   * example 2: hazard rate for a person with Metabolic cancer is exp(-0.92767602) = 0.3954717 times as high as the hazard rate for similar person with Gastrointestinal cancer (reference category)  
@@ -1115,45 +1262,97 @@ cbind(beta=param.beta, HR=exp(param.beta))
 
 # Frailty models 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
 # Aalen model
+
+Super flexible with __additive__ and not multiplicative (Cox) effects on the hazard. Why flexibel? Because all covariates and coefficients can be time-varying!
 
 ### model equation
 
 $$
-\lambda(t) = \lambda_0(t) + x'(t)\beta(t) = \sum_{k = 1}^px_k(t)\beta_k(t)
+\lambda(t) = \lambda_0(t) + x'(t)\beta(t) = \lambda_0(t) + \sum_{k = 1}^px_k(t)\beta_k(t)
 $$
+
 with additive effects of time-varying covariates on baseline hazard rate
 
-### Data
-
 ### Data 
-
-looks like that
 
 ```{r, echo = FALSE}
 load("data/liver81.RData")
 
-a = c("major_complications", "age", "charlson_score", "sex", "transfusion", 
+a = c("major_comp", "age", "charlson_score", "sex", "transfusion", 
   "metastasesYN", "major_resection", "days", "status", "id", "metastases")
 
 colnames(liver) = a
 head(liver)
 ```
 
-### Simple additive aalen model form lecture
+### Model
 
 ````{R, echo = FALSE, cache = TRUE}
 mod_aa <- aalen(
-  formula   = Surv(days, status) ~ age +  charlson_score + major_complications + metastases,
+  formula   = Surv(days, status) ~ age +  charlson_score + major_comp + metastases,
   data      = liver, residuals = 1
 )
 summary(mod_aa)
 ```
 
-* \textcolor{red}{DISCUSS interpretation for tests (supremum, Kolmogorov Smirnoff)}
-* huhuh
+* __Supremum-Test__ 
+    * if p < 0.05, H0: additive coefficient = 0 can be rejected (all 4 variables __do have significant effect different from 0__, though metastases is not as super significant as the others, check Graphics)
+    * if p > 0.05: H0: additive coefficient = 0 __can not__ be rejected
+* __Kolmogorov Smirnoff Test__
+    * if p < 0.05, H0: constant effect can be rejected (charlson score, mestastasesyes have __time varying, non-constant effect__)
+    * if p > 0.05, H0: constant effect can not be rejected (age, major\_complicationyes have __time constant effect_)
+* __Graphically:__
+    * linear trend over time: constant effect (age, complications)
+    * non-linear, disrupted trend over time: time varying effect (metastases, charlson)
+    * if 0 in Confidence Interval: insiginificant effect (explains, why $p_{metastases} > p_{others}$)
 
 
+```{R, echo = FALSE}
+layout(matrix(1:2 ,ncol = 2))
+plot(mod_aa, specific = c(2:5))
+```
+
+### Semi parametric Aalen:
+
+As we now know, that age and major\_comp have constant effects on the hazard, we can model them explicitly like that and yield fixed coefficients:
+
+```{R, echo = FALSE}
+mod_aa2 <- aalen(
+  formula   = Surv(days, status) ~ const(age) +  charlson_score + const(major_comp) + metastases,
+  data      = liver, residuals = 1
+)
+summary(mod_aa2)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
 # Cox-Aalen model
 
 ### model equation
@@ -1211,14 +1410,12 @@ summary(mod_ca)
 ```
 
 * Aalen part:
-  * Supremum-test: for all 4 variables the H0: no effect can be rejected
-  * Kolmogorov Smirnov for time variant effects: H0: constant effect can only clearly be rejected for metastases 
-\textcolor{red}{DISCUSS THIS}
+  * Supremum-test: for all 4 variables the _H0: no effect_ can be rejected, all covariables have significant influence
+  * Kolmogorov Smirnov for time variant effects: H0: constant effect can only clearly be rejected for metastases, others have constant effects
 * Cox part:
   * sexf: the additive, time-varying effects $\beta(t) = (\beta_{age}(t), \beta_{charlson}(t), \beta_{complications}(t), \beta_{metastases}(t))^T$ from the Aalen model is getting multiplied by factor $exp(0.224) = 1.251071$ for a female compared with a similar man
   * same for transfusion (exp(0.233) = 1.262381) and major_resection (exp(0.254) = 1.289172)
-  * \textcolor{red}{DISCUSS}
-  
+
 ### Cox-Aalen vs. PAM  
   
 Compare this with the PAM fitted on the data using the below formula. We explicitly model time varying effects of the 4 variables (metastases, marjo_complications, age, charlson) as in the Aalen model via ti(). 
@@ -1331,6 +1528,21 @@ lines(mcy_df$tend, mcy_df$cumu_hazard - mcn_df$cumu_hazard, col = 2, lwd = 2)
 ```
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
 # Competing Risk models
 
 * More than one possible event (e.g.: two types of death) next to censoring of which only one can occur. The events __compete__ with each other as only one of them can occur. 
@@ -1382,14 +1594,10 @@ $$
 $$
 4. Cumulate:
 
-<!--
-$$
-\text{CIC}_j(t_f) = P(T <= f | C = j) = \sum_{l = 1}^f \hat S(t_{l}) \times \hat \lambda_j(t_l) \text{ Aalen-Johannsen Estimator of cumulative incidence}
-$$
--->
+
 
 $$
-\text{CIC}_j(t_f) = P(T \leq f; C = j) = \sum_{l = 1}^f \hat S(t_l) \times \hat \lambda_j(t_l) 
+\text{CIC}_j(t_f) = P(T \leq f| C = j) = \sum_{l = 1}^f \hat S(t_l) \times \hat \lambda_j(t_l) 
 $$
 
 Also termed \textbf{Aalen-Johannsen Estimator of cumulative incidence}. Kaplan Meier would use event dependent $\hat S_c(t_{l-1})$ instead of overall $\hat S(t_{l-1})$
@@ -1417,9 +1625,95 @@ $$
 $$
 
 
-
 and $exp(\beta_lj)$ = the effect of covariate $x_l$ on cause specific hazard w.r.t nothing else happens
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+# Function calls
+
+#### Cox PH
+
+```coxph(Surv(start, stop, arrest) ~ fin + age + mar + employed.lag1, data = prison.long) ```
+
+$\lambda (t|x) = \lambda_0(t)exp(\beta_{fin}x_{fin} + \beta_{age}x_{age} + \beta_{mar}x_{mar} + ...)$
+
+#### Cox PH with time varying effect
+
+```coxph(Surv(start, stop, arrest) ~ fin + age + mar + age:I(log(t)) + employed.lag1, data = prison.long) ```
+
+$\lambda (t|x) = \lambda_0(t)exp(\beta_{fin}x_{fin} + \beta_{age1}x_{age} + \beta_{age2}(x_{age}log(t)) + \beta_{mar}x_{mar} + ...)$
+
+
+#### Aalen Model
+
+##### All time varying
+
+```aalen(Surv(days, status) ~ age +  charlson_score + major_complications + metastases, data = liver)```
+
+$$
+\lambda(t|X) = \beta_0(t) + \beta_{age}(t)*x_{age}(t) +  \beta_{charlson}(t)*x_{charlson}(t) + \beta_{complications}(t)*x_{complications}(t) + \beta_{metastases}(t)*x_{metastases}(t)
+$$
+##### Semi parametric
+
+```aalen(Surv(days, status) ~ const(age) +  charlson_score + const(major_complications) + metastases, data = liver)```
+
+$$
+\lambda(t|X) = \beta_0(t) + \beta_{age}*x_{age}(t) +  \beta_{charlson}(t)*x_{charlson}(t) + \beta_{complications}*x_{complications}(t) + \beta_{metastases}(t)*x_{metastases}(t)
+$$
+
+##### Cox Aalen model
+
+``` cox.aalen(formula   = Surv(days, status) ~ age +  charlson_score + major_complications + metastases + prop(sex) + prop(transfusion) + prop(major_resection), data = liver, residuals = 1, basesim   = 1)```
+
+$$
+\lambda(t|X) = [\beta_0(t) + \beta_{age}*x_{age}(t) +  \beta_{charlson}(t)*x_{charlson}(t) + \beta_{complications}*x_{complications}(t) + \beta_{metastases}(t)*x_{metastases}(t)] exp(x_{sex}(t)\beta_{sex} + x_{transfusion}\beta_{transfusion} + x_{major resection}(t)\beta_{major resection})
+$$
+
+##### PEM
+
+```glm(ped_status ~ interval -1 + treatment, offset = offset, data = leuk.ped, family = poisson(link = log))```
+
+$$
+\lambda_i(t|x_i) = exp(\lambda_{0j} + x_{i, treatment}*\beta_{treatment}) 
+$$
+
+
+##### PAM
+
+```gam(ped_status ~ s(tend, k = 10) + treatment, offset = offset, data = leuk.ped, family = poisson(link = log))```
+
+$$
+\lambda_i(t|x_i) = exp(f_0(t_j) + x_{i, treatment}*\beta_{treatment}) \\= exp( \sum_{k = 1}^{K=10} \gamma_k B_k(t_j) + x_{i, treatment}*\beta_{treatment})
+$$
+##### PAMM
+
+```pamm_icu <- bam(ped_status ~ s(tend) + Year + AdmCatID + DiagID2 + s(Age) + s(BMI) + s(ApacheIIScore) + s(CombinedicuID, bs="re"), offset=offset, data = ped, family=poisson(), discrete = TRUE)```
+
+$$
+\lambda_i(t|x_i) = exp(f_0(t_j) + x_{i, year}*\beta_{year}) + x_{i, AdmCatID}*\beta_{AdmCatID}) + \\
++ x_{i, DiagID2}*\beta_{DiagID2}) + f(x_{i, age}, t_j) + f(x_{i, bmi}, t_j) + \\
++ f(x_{i, apachescore}, t_j) + b_{frailty})
+$$
+
+
+\newpage
 # Random Stuff
 
 ### Attest significance only based on $\beta$ and $se(\beta)$
