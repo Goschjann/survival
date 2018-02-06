@@ -5,6 +5,7 @@ date: "January 2018"
 output:
   pdf_document:
     toc: yes
+    latex_engine: xelatex
     number_sections: true
   html_document:
     toc: yes
@@ -874,18 +875,17 @@ head(prison.long)
 ## Model
 
 Fit a logit-model on the data with ```t``` as input. The hazard in the logit model follows:
-<!--
 $$
-\lambda ( t|X_{it} ) = P( y_{it} = 1 | X_{it})  = \frac{ exp(\beta_{0t} + X_{it}^T\beta)}{1 + exp(\beta_{0t} + X^T_{it}\beta)}
+\lambda (t| X_{it} ) = P( y_{it} = 1 | X_{it})  = \frac{ exp( \beta_{0t} + X_{it}^T \beta)}{1 + exp(\beta_{0t} + X_{it}^T \beta)}
 $$
--->
-and thus the baseline hazard (all other coavariates than the time dummy-variable of interest):
 
-<!--
+
+and thus the baseline hazard (all other covariates than the time dummy-variable of interest):
+
 $$
-\lambda_0 (t| X_{it} ) = P( y_{it} = 1 | X_{it} = 0) = \frac{ exp(\beta_{0t}) }{1 + exp(\beta_{0t} ) }
+\lambda_0 (t; X_{it} = 0) = P( y_{it} = 1 ; X_{it} = 0) = \frac{ exp(\beta_{0t}) }{1 + exp(\beta_{0t} ) }
 $$
--->
+
 Thus, we yield 52 time coeffients next to the other coefficients:
 
 ```{R, echo = FALSE}
@@ -1372,9 +1372,11 @@ $$
 $$
 -->
 
-Latex does not work for some reason
+$$
+\text{CIC}_j(t_f) = P(T \leq f; C = j) = \sum_{l = 1}^f \hat S(t_l) \times \hat \lambda_j(t_l) 
+$$
 
-Kaplan Meier would use event dependent $\hat S_c(t_{l-1})$ instead of overall $\hat S(t_{l-1})$
+Also termed \textbf{Aalen-Johannsen Estimator of cumulative incidence}. Kaplan Meier would use event dependent $\hat S_c(t_{l-1})$ instead of overall $\hat S(t_{l-1})$
 
 
 
@@ -1392,8 +1394,14 @@ $$
 Interpretation by cause specific log odds w.r.t. reference event type:
 
 $$
-log \frac{\lambda_j(t|X)}{\lambda_0(t|X)} = \beta_{0tj} + X^T\beta_{j} 
+log \frac{\lambda_j(t|X)}{\lambda_0(t|X)} = \beta_{0tj} + X^T\beta_{j}
 $$
+$$
+\frac{\lambda_j(t|X)}{\lambda_0(t|X)} = exp(\beta_{0tj})exp(X^T\beta_{j})
+$$
+
+
+
 and $exp(\beta_lj)$ = the effect of covariate $x_l$ on cause specific hazard w.r.t nothing else happens
 
 # Random Stuff
