@@ -26,7 +26,7 @@ Summary of models and especially their interpretation (graphically as well as co
 
 
 ```{r, echo=FALSE, warnings = FALSE, message = FALSE}
-setwd("C:/Users/Martin/Documents/survival-master")
+# setwd("C:/Users/Martin/Documents/survival-master")
 
 library(ggplot2)
 theme_set(theme_bw())
