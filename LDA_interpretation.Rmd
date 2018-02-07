@@ -80,7 +80,7 @@ library("mgcv")
 * model $\lambda(t)$ directly
 * $\lambda(t|X) = \lambda_0(t)exp(X^T\beta)$
 * __parametric__ Partial Likelihood Estimation: $PL(\beta) = \prod_{i = 1}^m \frac{exp(x_i^T\beta)}{\sum_{j \in R(t_i)}exp(x_i^T\beta)}$
-* __non-parametric__ $\lambda_0(t)$ via Breslow
+* __non-parametric__ $\lambda_0(t)$ via Breslow, Profile Likelihood for _nuisance parameter_ $\lambda_0(t)$ 
 * __BUT1__ effect of $\beta_j$ assumed to be linear, often is not 
 * __BUT2__ time varying covariates and effects
 * __BUT3__ time constant baseline hazards
@@ -287,6 +287,30 @@ survdiff(Surv(dauer, status) ~ female, data = soep)
 ```
 
 
+### By Hand:
+
+1. order events according to time
+2. create following table:
+
+$a_{k-1}$   $a_{k}$   $S_k(t)$   $d_k$   $w_k$    $n_k$    $SE(S(t))$    $+/- KI$
+--------    -------   --------   ------  -----    -----    ----------    --------
+[0,         12[      1          0       1        14       0
+[12,        29[       0.917      1       1        12       0.08          [1.06, 0.773]
+[29,        31[       0.910      1       0        11       0.087         [1.065, 0.755]
+
+
+3. where:  
+    * $d_k$ = deaths before $k$   
+    * $w_k$ = censored before $k$  
+    * $n_k = n_{k-1} - d_k - w_k$ people in risk set before $k$  
+    * $S(k) = 1 - d_k / n_k$  
+ 
+3. $Var(S(t=k)) = S(t=k)^2 \frac{d_k}{n_k(n_k-d_k)}$
+4. $KI = S(k) +/- z_{1-\alpha/2} * \sqrt{Var(S(t=k))} = S(k) +/- 1.96 * \sqrt{Var(S(t=k))}$
+
+
+
+
 
 
 # Nelson Aalen
@@ -305,8 +329,9 @@ survdiff(Surv(dauer, status) ~ female, data = soep)
 ## General
 
 Assumptions: 
-1. covariates have a multiplicative effect on the __Survival time__. E.g.: Survival time for smokers is an accelerated version of the survival time for non-smokers.   
-2. the survival time follows an assumed distribution that we get applying a density transformation
+
+1. covariates have a multiplicative effect on the __Survival time__. E.g.: Survival time for smokers is an accelerated version of the survival time for non-smokers.     
+2. the survival time follows an assumed distribution that we get applying a density transformation  
 
 We model the survival time directly with the log-trafo:
 
@@ -323,8 +348,9 @@ $$
 Thus, the effect of the estimated coefficient $\hat\beta_j$ on Survival time T is $exp(\beta_j)$
 
 Steps for the estimation:
-1. calculate density for T 
-2. classic Maximum Likelihood Estimation
+
+1. calculate density for T   
+2. classic Maximum Likelihood Estimation  
 
 
 The exponential and the weibull AFT can be compared with a Cox PH model as they also have proportional (time independent) hazard ratios. This means that the following re-parametrization holds:
@@ -926,6 +952,7 @@ Idea: Tests for significant differencies in the survival curves for the two subp
 * H0: they do not differ
 * p > 0.05: H0 cannot be rejected -> no significant effect of type2. 
 * If there are more than 1 categorical variable we yield the H0: no effect of no covariate at all. Reject H0 again in favor of significant effects if $p < \alpha$.
+* Reject the H0 if $W_L:=\frac{U_Lk^2}{V_l} \geq \chi^2_{1-\alpha}(1)$
 
 
 
@@ -967,7 +994,7 @@ head(prison.long)
 ### Logit 
 
 $$
-P(T = t | T \geq t, x) = \frac{exp(\eta)}{1+exp(\eta)}
+P(T = t | T \geq t, x) = \frac{exp(\eta)}{1+exp(\eta)}
 $$
 $$
 P(T > t | T \geq t, x) = 1 - P(T = t | T \geq t, x) =  \frac{1}{1+exp(\eta)}
@@ -976,7 +1003,9 @@ $$
 \frac{P(T = t | T \geq t, x)}{P(T > t | T \geq t, x)} = exp(\eta) = exp(\beta_0 + X'\beta) = exp(\beta_0)exp(X'\beta) \textbf{ Continuation ratio}
 $$
 
-e.g. $beta_{female} = 0.5 \rightarrow$ Risk of woman to have event in time $T = t$ instead of later ih $T > t$ is factor $exp(0.5) = 1.68$ higher than for men ($x_{female} = 0$)
+e.g. $beta_{female} = 0.5 \rightarrow$ Risk of woman to have event in time $T = t$ instead of later ih $T > t$ is factor $exp(0.5) = 1.68$ higher than for men ($x_{female} = 0$). 
+
+$\eta = X'\beta$ linear predictor. 
 
 #### Example
 
@@ -1001,6 +1030,12 @@ $$
 $$
 
 ### Cloglog
+
+#### Model equation
+
+$$
+\
+$$
 
 Interpetation with respect to the hazard rate. 
 
@@ -1042,6 +1077,10 @@ plot(1:52, exp(m.logit$coefficients[1:52])/(1+exp(m.logit$coefficients[1:52])),
 lines(1:52, smooth.basehaz, type = "l", lty = 1, col = "blue", lwd = 4)
 
 ```
+
+
+
+
 
 
 
@@ -1153,6 +1192,11 @@ we can also plot the splined piecewise smoothed hazards:
 ```{R, echo = FALSE}
 gg_smooth(x = leuk.ped, fit = pam, terms = c("tend"))
 ```
+
+
+
+
+
 
 
 
@@ -1358,7 +1402,7 @@ summary(mod_aa2)
 ### model equation
 
 $$
-\lambda(t) = \lambda_0(t) + X(t)\beta(t) \cdot exp(Z(t)'\gamma)
+\lambda(t) = X(t)\beta(t) \cdot exp(Z(t)'\gamma)
 $$
 with additive effects of time-varying covariates on baseline hazard rate which are also multiplicatively affected via Cox part of the model. $\gamma$ are time-constant coefficients, PH-assumption, and $\beta$ are time varying additive coefficients by the Aalen-part. 
 
@@ -1413,7 +1457,7 @@ summary(mod_ca)
   * Supremum-test: for all 4 variables the _H0: no effect_ can be rejected, all covariables have significant influence
   * Kolmogorov Smirnov for time variant effects: H0: constant effect can only clearly be rejected for metastases, others have constant effects
 * Cox part:
-  * sexf: the additive, time-varying effects $\beta(t) = (\beta_{age}(t), \beta_{charlson}(t), \beta_{complications}(t), \beta_{metastases}(t))^T$ from the Aalen model is getting multiplied by factor $exp(0.224) = 1.251071$ for a female compared with a similar man
+  * sexf: the additive, time-varying effects $\beta(t) = (\beta_{age}(t), \beta_{charlson}(t), \beta_{complications}(t), \beta_{metastases}(t))^T$ from the Aalen model is getting multiplied by factor $exp(0.224) = 1.251071$ for a female compared with a similar man __for fixed time t__.
   * same for transfusion (exp(0.233) = 1.262381) and major_resection (exp(0.254) = 1.289172)
 
 ### Cox-Aalen vs. PAM  
@@ -1713,6 +1757,10 @@ $$
 $$
 
 
+
+
+
+
 \newpage
 # Random Stuff
 
@@ -1722,7 +1770,7 @@ $$
 2. thresholds for $alpha = 0.05$:
   1. one sided: $z_{thresh} = 1.64$
   1. two sided: $z_{thresh} = 1.96$
-3. Reject H0 (coefficient is not significant) if $z > z_{thresh}$
+3. Reject H0 (coefficient = 0 aka is not significant) if $z > z_{thresh}$
 
 [check their explanation](http://jukebox.esc13.net/untdeveloper/RM/Stats_Module_4/Stats_Module_48.html)
 
