@@ -315,7 +315,23 @@ $a_{k-1}$   $a_{k}$   $S_k(t)$   $d_k$   $w_k$    $n_k$    $SE(S(t))$    $+/- KI
 
 # Nelson Aalen
 
+Estimate __cumulative Hazard rates__ non-parametrically
 
+## Howto:
+
+1. Split time into intervals $[t_{k-1}, t_{k}[$ on each event-time-point
+2. Calculate estimator for cumulative Hazard in the interval via 
+$$
+\hat\Lambda_{NA}(t) = \sum_{t_k \leq t}\frac{d_k}{n_k} \text{ sum over all intervals until k of events / people under risk}
+$$
+
+## Breslow
+
+Breslow uses the Nelson-Aalen estimates to calculate __Survival time estimates__
+
+$$
+\hat S_{Breslow}(t) = exp(-\Lambda_{NA}(t))
+$$
 
 
 
@@ -352,12 +368,30 @@ Steps for the estimation:
 1. calculate density for T   
 2. classic Maximum Likelihood Estimation  
 
+## Relation to Cox PH model 
 
-The exponential and the weibull AFT can be compared with a Cox PH model as they also have proportional (time independent) hazard ratios. This means that the following re-parametrization holds:
+In the AFT model we can show, that $T \sim WB(\alpha, \lambda) \text{ with } \alpha =\frac{1}{\sigma}, \lambda = exp(-X'\beta)$. The hazard from a Weibull distributed random variable is $\lambda(t|X) = \lambda \alpha (\lambda t)^{\alpha-1}$. Plugging above in, we yield:
+
 $$
-\beta_{PH} = - \frac{\beta_{\text{AFT: WB or Exp}}}{\sigma}
+\lambda(t|X) = \lambda^\alpha \alpha t^{\alpha-1} 
 $$
-where $sigma$ is our scale parameter from the AFT model equation.  __This interpretation goes only from AFT to CoxPH, not in both directions!__. 
+$$
+\lambda(t|X) = exp(-X'\beta_{AFT})^{\frac{1}{\sigma}} \frac{1}{\sigma}t^{\frac{1}{\sigma} -1} 
+$$
+$$
+\lambda(t|X) = exp(-\frac{X'\beta_{AFT}}{\sigma}) \frac{1}{\sigma}t^{\frac{1}{\sigma} -1} 
+$$
+Whereas in the normal Cox we yield:
+
+$$
+\lambda{t|X} = \lambda_0(t)exp(X'\beta_{COX})
+$$
+Thus, the relationship 
+$$
+\beta_{Cox} = - \frac{\beta_{AFT}}{\sigma}
+$$
+, where $sigma$ is our scale parameter from the AFT model equation, holds __if the AFT model satisfies the PH assumption! This interpretation goes only from AFT to CoxPH, not in both directions!__. 
+
 
 Therefore we compare with this baseline Cox model:
 
@@ -366,6 +400,49 @@ Therefore we compare with this baseline Cox model:
 coxphFit <- coxph(Surv(futime, fustat) ~ ecog.ps + rx, ovarian)
 summary(coxphFit)
 ```
+
+
+
+## Graphical Check of Assumptions
+
+Nice property of the Weibull AFT: 
+$$
+S(t) = exp(-(\lambda t)^\alpha)
+$$
+$$
+\Rightarrow ln[-ln[S(t)]] = \alpha ln(\lambda) + \alpha ln(t)
+$$
+$$
+\Rightarrow \text{left factor is linear in } \alpha ln(t) \text{ and } \alpha ln(\lambda) \text{ is the intercept of the curves}
+$$
+
+We exploit this propery to check the Weibull assumption for a binary variable graphically: plot $ln[-ln[S(t)]]$ vs. $ln(t)$ where we estimate $\hat S(t)$ via Kaplan-Meier (or estimate $-ln[S(t)] = \Lambda(t)$) via Nelson-Aalen. Then we can check two assumptions:
+
+1. Are the lines for the two Strati parallel? Yes: PH assumption satisfied!
+1. Lines straight? Yes: Weibulld / Exponential AFT applicable!
+1. Lines parallel but not straight? Yes: PH still valid, but AFT model not applicable, use Cox PH!
+2. Is the slope of the lines $\alpha = 1$? Yes: data follows $WB(\alpha = 1, \lambda) = Exp(\lambda)$ distribution!
+
+
+Example:
+
+```{R, echo = FALSE}
+data("leuk2", package = "bpcp")
+leuk2$treatment <- relevel(leuk2$treatment, ref = "placebo")
+km_leuk <- survfit(Surv(time, status) ~ treatment, data = leuk2)
+
+br.km <- broom::tidy(km_leuk) %>%
+  mutate(
+    lls = log(-log(estimate + 10e-5)),
+    lt  = log(time))
+
+ggplot(br.km, aes(x = lt, y = lls, col = strata)) +
+  geom_point() + geom_step() +
+  xlab(expression(log(t))) + ylab(expression(log(-log(S(t))))    )
+```
+
+1. Curves are parallel and straight: PH assumption holds and AFT is applicable!
+2. Slope $\approx 1$: Exponential AFT is applicable
 
 
 ## Exponential
@@ -425,13 +502,27 @@ summary(survregWB)
 * Geometric mean of survival time: 988 
 * 1 unit change in ecog.ps shortens survival time by exp(-0.385) = 0.68  
 * 1 unit change in rx increases survival time by exp(0.529) = 1.70 
+* Scale parameter gives flexibility to the model:
+    * __transform to shape parameter from Weibull distribution:__ shape = 1/scale aka $\alpha = \frac{1}{\sigma}$
+    * shape < 1: hazard decreases over time
+    * shape = 1: constant hazard over time (= Exponential AFT)
+    * shape > 1: hazard increases over time
+    * Here: $shape = \alpha = \frac{1}{\sigma} = 1/0.844 = 1.13$
 * though, both effects are non significant  
-* If scale parameter ```{R, echo = FALSE} survregWB$scale ``` was close to 1 we would yield an exponential model. Our shape parameter is 1 / scale
-* coefficients: ```{R, echo = FALSE} exp(coef(survregWB)) ```
+* If scale parameter 
+```{R, echo = FALSE} 
+survregWB$scale
+``` 
+was close to 1 we would yield an exponential model.
+* coefficients: 
+
+```{R, echo = FALSE} 
+exp(coef(survregWB))
+```
 
 
 ### PH interpretation (multiply by -1 and the shape parameter before exp())
-* 1 unit change in ecog.ps increases the hazard h(t) by 1.55 
+* 1 unit change in ecog.ps increases the hazard h(t) by $exp(--0.385 / 0.844) = 1.55$ 
 * 1 unit change in rx decreases h(t) by 0.55
 
 ```{R, echo = FALSE}
@@ -588,6 +679,39 @@ ggplot(cox.res.surv, aes(x=cs.residual, y=Lambda)) +
 
 
 
+\newpage
+# Stratified Cox Model
+
+Assumptions:
+
+1. Separate Baseline Hazard for each of the two Strati
+2. Effects of covariates on hazard rates identical in both Strati
+
+Requirements:
+
+1. Binary, categorical variables
+1. Makes sense if PH for covariate not satisfied
+1. No interest on interpretation of the variable
+
+Estimation:
+
+1. Coefficients via sum of Partial Likelihoods $\sum_{z_0}PL(\beta) + \sum_{z_1}PL(\beta)$
+2. Baseline hazard__s__ via Breslow
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -691,10 +815,10 @@ cox.zph(m4)
 plot(cox.zph(m4)[2])
 ```
 
-Model age explicitly via an interaction term with time such that $x_{age2} = x_{age}log(t)$. This yields perfect Schoenfeld-plots and an increase in the global p-values of the zph test:
+Model age explicitly via an interaction term with time such that $x_{age2} = x_{age}log(t + 1)$. This yields perfect Schoenfeld-plots and an increase in the global p-values of the zph test:
 
 ```{R, echo = FALSE}
-m5 = coxph(Surv(start, stop, arrest) ~ fin + age + age:I(log(stop))+ prio + mar + employed.lag1, data = prisss)
+m5 = coxph(Surv(start, stop, arrest) ~ fin + age + age:I(log(stop + 1))+ prio + mar + employed.lag1, data = prisss)
 
 summary(m5)
 cox.zph(m5, transform = "identity")
@@ -704,6 +828,14 @@ plot(cox.zph(m5)[6])
 
 We can also test the __PH Assumption__ for a variable this way: if the time varying effect is not significant, the PH is valid. 
 
+## Interpretation
+
+```{R, echo = FALSE}
+m5$coefficients[c(2, 6)]
+```
+
+1. At t=0 is hazard of a 20-year old $\frac{exp(0.16\times20 - 0.07 \times 20 \times 0}{exp(0.16\times30 - 0.07 \times 30 \times 0} \approx 0.2$ times as high as the one of a 30-year old ceteris paribus. 
+1. At t=15 is hazard of a 20-year old $\frac{exp(0.16\times20 - 0.07 \times 20 \times log(15+1)}{exp(0.16\times30 - 0.07 \times 30 \times log(15+1)} \approx 1.41$ times as high as the one of a 30-year old ceteris paribus. 
 
 
 
@@ -1034,10 +1166,16 @@ $$
 #### Model equation
 
 $$
-\
+\lambda(t|x_i) = P(y_{it} = 1 | x_{it}) = 1 - exp(-exp(\eta_i)) \text{ equivalent-moves: }log(), -1
+$$
+$$
+exp(\eta_i) = -log(1-\lambda(t|x_i)) \text{ with } 1-\lambda(t|x_i) = S(t_i) \\
+exp(\eta_i) = -log(S(t_i)) \\
+exp(\eta_i) = \Lambda(t) \text{ with } \frac{\partial \Lambda(t)}{\partial t} = \lambda(t) \\
+\Rightarrow \lambda(t|x_i) = \frac{\partial exp(\eta_i)}{\partial t} = \frac{\partial exp(\beta_{0t} + X'\beta)}{\partial t}
 $$
 
-Interpetation with respect to the hazard rate. 
+__Neat thing:__ this form allows for Interpetation with respect to the hazard rate. Exactly as shown here:
 
 
 ```{R, echo = FALSE}
